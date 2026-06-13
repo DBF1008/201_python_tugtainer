@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Final, cast
 
 import aiohttp
@@ -143,3 +144,43 @@ async def get_host_summary(host: HostsModel, session: AsyncSession) -> HostSumma
         unused_images=unused_images,
         dangling_images=dangling_images,
     )
+
+
+def _empty_summary(host: HostsModel, error: str) -> HostSummary:
+    """Return a zeroed-out summary for a host that could not be reached."""
+    return HostSummary(
+        host_id=host.id,
+        host_name=host.name,
+        host_enabled=host.enabled,
+        total_containers=0,
+        by_status={},
+        by_health={},
+        by_protected={"true": 0, "false": 0},
+        by_check_enabled={"true": 0, "false": 0},
+        by_update_enabled={"true": 0, "false": 0},
+        by_update_available={"true": 0, "false": 0},
+        total_images=0,
+        unused_images=0,
+        dangling_images=0,
+        error=error,
+    )
+
+
+async def safe_get_host_summary(
+    host: HostsModel, session: AsyncSession
+) -> HostSummary:
+    """Wrapper around ``get_host_summary`` that degrades on failure.
+
+    If the agent for a single host is unreachable, times out, or raises any
+    other exception, this function catches the error and returns a zeroed-out
+    :class:`HostSummary` with the ``error`` field populated rather than
+    propagating the exception and taking down the entire summary endpoint.
+    """
+    try:
+        return await get_host_summary(host, session)
+    except Exception as e:
+        logging.warning(
+            "Failed to get summary for host %s (id=%s): %s",
+            host.name, host.id, e,
+        )
+        return _empty_summary(host, str(e))

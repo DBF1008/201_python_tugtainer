@@ -9,10 +9,15 @@ class IsUpdateAvailableResponseBodySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FailedHost(BaseModel):
+    host_id: int
+    host_name: str
+    error: str
 
 
 class TotalUpdateCountResponseBodySchema(BaseModel):
     total_updates: int
+    failed_hosts: list[FailedHost] = []
 
 
 class VersionResponseBody(BaseModel):

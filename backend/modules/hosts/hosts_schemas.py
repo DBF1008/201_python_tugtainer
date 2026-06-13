@@ -39,3 +39,4 @@ class HostSummary(BaseModel):
     total_images: int
     unused_images: int
     dangling_images: int
+    error: str | None = None

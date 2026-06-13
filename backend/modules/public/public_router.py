@@ -20,12 +20,16 @@ from backend.modules.containers.containers_model import (
 )
 from backend.modules.hosts.hosts_model import HostsModel
 from backend.modules.hosts.hosts_schemas import HostSummary
-from backend.modules.public.public_util import fetch_latest_release, get_host_summary
+from backend.modules.public.public_util import (
+    fetch_latest_release,
+    safe_get_host_summary,
+)
 from shared.schemas.container_schemas import (
     GetContainerListBodySchema,
 )
 
 from .public_schemas import (
+    FailedHost,
     IsUpdateAvailableResponseBodySchema,
     TotalUpdateCountResponseBodySchema,
     VersionResponseBody,
@@ -72,7 +76,9 @@ async def get_summary(
 
     hosts = (await session.execute(select(HostsModel))).scalars().all()
 
-    return await asyncio.gather(*(get_host_summary(host, session) for host in hosts))
+    return await asyncio.gather(
+        *(safe_get_host_summary(host, session) for host in hosts)
+    )
 
 
 @public_router.get(
@@ -95,22 +101,44 @@ async def get_update_count(
     hosts = result.scalars().all()
 
     total_updates = 0
-    for host in hosts:
-        client = AgentClientManager.get_host_client(host)
-        containers = await client.container.list(GetContainerListBodySchema(all=True))
-        db_result = await session.execute(
-            select(ContainersModel).where(ContainersModel.host_id == host.id)
-        )
-        containers_db = db_result.scalars().all()
-        containers_db_map = {item.name: item for item in containers_db}
+    failed_hosts: list[FailedHost] = []
 
-        for container in containers:
-            db_item = containers_db_map.get(cast(str, container.name))
-            if db_item and db_item.update_available:
-                total_updates += 1
+    for host in hosts:
+        try:
+            client = AgentClientManager.get_host_client(host)
+            containers = await client.container.list(
+                GetContainerListBodySchema(all=True)
+            )
+            db_result = await session.execute(
+                select(ContainersModel).where(
+                    ContainersModel.host_id == host.id
+                )
+            )
+            containers_db = db_result.scalars().all()
+            containers_db_map = {item.name: item for item in containers_db}
+
+            for container in containers:
+                db_item = containers_db_map.get(cast(str, container.name))
+                if db_item and db_item.update_available:
+                    total_updates += 1
+        except Exception as e:
+            logging.warning(
+                "Failed to get update count for host %s (id=%s): %s",
+                host.name, host.id, e,
+            )
+            failed_hosts.append(
+                FailedHost(
+                    host_id=host.id,
+                    host_name=host.name,
+                    error=str(e),
+                )
+            )
 
     return TotalUpdateCountResponseBodySchema.model_validate(
-        {"total_updates": total_updates}
+        {
+            "total_updates": total_updates,
+            "failed_hosts": [fh.model_dump() for fh in failed_hosts],
+        }
     )
 
 
