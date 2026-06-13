@@ -6,10 +6,20 @@ from pytest_mock import MockerFixture
 
 from backend.app import app
 from backend.db.session import get_async_session
+from backend.enums.cron_jobs_enum import ECronJob
+from backend.modules.settings.settings_enum import ESettingKey
 
 module_path = "backend.modules.public.public_router"
+cron_module_path = "backend.core.cron_manager"
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _clear_dependency_overrides():
+    """Keep tests isolated: drop any dependency overrides after each test."""
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -127,3 +137,103 @@ async def test_get_update_count(
     response = client.get("/public/update_count")
     assert response.status_code == 200
     assert response.json() == {"total_updates": 1}
+
+
+def _override_session(mocker: MockerFixture, execute):
+    """Point /public/health at a fake session with the given execute behaviour."""
+    fake_session = mocker.Mock()
+    fake_session.execute = execute
+
+    async def fake_get_async_session():
+        yield fake_session
+
+    app.dependency_overrides[get_async_session] = fake_get_async_session
+
+
+def test_health_ok_without_cron_jobs(mocker: MockerFixture):
+    """
+    Regression: a usable instance with no scheduled jobs (manual-only mode or
+    freshly initialised) must report healthy. Availability is database-only and
+    must not be tied to whether automatic check/update are configured.
+    """
+    _override_session(
+        mocker, mocker.AsyncMock(return_value=mocker.Mock())
+    )
+
+    response = client.get("/public/health")
+
+    assert response.status_code == 200
+    assert response.json() == "OK"
+
+
+def test_health_returns_503_on_database_error(mocker: MockerFixture):
+    _override_session(
+        mocker, mocker.AsyncMock(side_effect=Exception("db down"))
+    )
+
+    response = client.get("/public/health")
+
+    assert response.status_code == 503
+
+
+def test_scheduler_healthy_when_nothing_configured(mocker: MockerFixture):
+    mocker.patch(f"{cron_module_path}.CronManager.get_jobs", return_value=[])
+    mocker.patch(
+        f"{cron_module_path}.SettingsStorage.get", side_effect=lambda key: ""
+    )
+
+    response = client.get("/public/scheduler")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "healthy": True,
+        "scheduled_jobs": [],
+        "expected_jobs": [],
+        "missing_jobs": [],
+    }
+
+
+def test_scheduler_reports_anomaly_when_configured_job_missing(
+    mocker: MockerFixture,
+):
+    crontabs = {
+        ESettingKey.CHECK_CRONTAB_EXPR: "*/5 * * * *",
+        ESettingKey.UPDATE_CRONTAB_EXPR: "",
+    }
+    mocker.patch(f"{cron_module_path}.CronManager.get_jobs", return_value=[])
+    mocker.patch(
+        f"{cron_module_path}.SettingsStorage.get",
+        side_effect=lambda key: crontabs.get(key, ""),
+    )
+
+    response = client.get("/public/scheduler")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["healthy"] is False
+    assert data["expected_jobs"] == [ECronJob.CHECK_CONTAINERS.value]
+    assert data["missing_jobs"] == [ECronJob.CHECK_CONTAINERS.value]
+    assert data["scheduled_jobs"] == []
+
+
+def test_scheduler_healthy_when_configured_job_running(mocker: MockerFixture):
+    crontabs = {
+        ESettingKey.CHECK_CRONTAB_EXPR: "*/5 * * * *",
+        ESettingKey.UPDATE_CRONTAB_EXPR: "",
+    }
+    mocker.patch(
+        f"{cron_module_path}.CronManager.get_jobs",
+        return_value=[ECronJob.CHECK_CONTAINERS],
+    )
+    mocker.patch(
+        f"{cron_module_path}.SettingsStorage.get",
+        side_effect=lambda key: crontabs.get(key, ""),
+    )
+
+    response = client.get("/public/scheduler")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["healthy"] is True
+    assert data["missing_jobs"] == []
+    assert data["scheduled_jobs"] == [ECronJob.CHECK_CONTAINERS.value]

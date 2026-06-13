@@ -255,10 +255,18 @@ The backend API is served under the `/api` base path.
 ### Public endpoints
 
 - `GET /api/public/health`
+- `GET /api/public/scheduler`
 - `GET /api/public/version`
 - `GET /api/public/summary` (requires `ENABLE_PUBLIC_API=true`)
 - `GET /api/public/update_count` (requires `ENABLE_PUBLIC_API=true`)
 - `GET /api/public/is_update_available` (requires `ENABLE_PUBLIC_API=true`)
+
+`GET /api/public/health` reports only service availability (database reachable)
+and is independent of scheduling: since automatic check/update are off by
+default, an instance used only for manual operations stays healthy. Use
+`GET /api/public/scheduler` to observe the scheduler — it flags a configured
+job that is not running (`healthy: false`) while treating an unset crontab as
+intentionally idle.
 
 
 ## Env:

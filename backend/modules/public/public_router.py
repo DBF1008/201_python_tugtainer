@@ -11,9 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import Config
 from backend.core.agent_client import AgentClientManager
-from backend.core.cron_manager import CronManager
+from backend.core.cron_manager import get_scheduler_status
 from backend.db.session import get_async_session
-from backend.enums.cron_jobs_enum import ECronJob
 from backend.modules.auth.auth_util import is_authorized
 from backend.modules.containers.containers_model import (
     ContainersModel,
@@ -27,6 +26,7 @@ from shared.schemas.container_schemas import (
 
 from .public_schemas import (
     IsUpdateAvailableResponseBodySchema,
+    SchedulerStatusResponseBody,
     TotalUpdateCountResponseBodySchema,
     VersionResponseBody,
 )
@@ -45,14 +45,34 @@ def get_version():
 
 @public_router.get("/health")
 async def health(session: AsyncSession = Depends(get_async_session)):
+    """
+    Service availability probe.
+
+    Reports only whether the instance can serve requests (database reachable).
+    It is intentionally independent of the scheduler: automatic check/update
+    are optional and off by default, so a missing cron job must never mark a
+    usable instance unhealthy. See /public/scheduler for scheduler status.
+    """
     try:
         await session.execute(text("SELECT 1"))
     except Exception as e:
         raise HTTPException(503, f"Database error {e}") from e
-    cron_jobs = CronManager.get_jobs()
-    if ECronJob.CHECK_CONTAINERS not in cron_jobs:
-        raise HTTPException(500, "Main cron job not running")
     return "OK"
+
+
+@public_router.get(
+    "/scheduler",
+    description="Scheduler status, reported independently of service health",
+    response_model=SchedulerStatusResponseBody,
+)
+async def get_scheduler() -> SchedulerStatusResponseBody:
+    status = get_scheduler_status()
+    if not status["healthy"]:
+        logging.warning(
+            "Scheduler anomaly: configured jobs are not running: %s",
+            status["missing_jobs"],
+        )
+    return SchedulerStatusResponseBody.model_validate(status)
 
 
 @public_router.get(
