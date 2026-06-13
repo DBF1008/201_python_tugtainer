@@ -14,6 +14,7 @@ from backend.core.agent_client import AgentClientManager
 from backend.core.cron_manager import CronManager
 from backend.db.session import get_async_session
 from backend.enums.cron_jobs_enum import ECronJob
+from backend.exception import TugAgentClientError
 from backend.modules.auth.auth_util import is_authorized
 from backend.modules.containers.containers_model import (
     ContainersModel,
@@ -26,6 +27,7 @@ from shared.schemas.container_schemas import (
 )
 
 from .public_schemas import (
+    HostErrorSchema,
     IsUpdateAvailableResponseBodySchema,
     TotalUpdateCountResponseBodySchema,
     VersionResponseBody,
@@ -95,22 +97,49 @@ async def get_update_count(
     hosts = result.scalars().all()
 
     total_updates = 0
+    errors: list[HostErrorSchema] = []
     for host in hosts:
-        client = AgentClientManager.get_host_client(host)
-        containers = await client.container.list(GetContainerListBodySchema(all=True))
-        db_result = await session.execute(
-            select(ContainersModel).where(ContainersModel.host_id == host.id)
-        )
-        containers_db = db_result.scalars().all()
-        containers_db_map = {item.name: item for item in containers_db}
+        try:
+            client = AgentClientManager.get_host_client(host)
+            containers = await client.container.list(
+                GetContainerListBodySchema(all=True)
+            )
+            db_result = await session.execute(
+                select(ContainersModel).where(ContainersModel.host_id == host.id)
+            )
+            containers_db = db_result.scalars().all()
+            containers_db_map = {item.name: item for item in containers_db}
 
-        for container in containers:
-            db_item = containers_db_map.get(cast(str, container.name))
-            if db_item and db_item.update_available:
-                total_updates += 1
+            for container in containers:
+                db_item = containers_db_map.get(cast(str, container.name))
+                if db_item and db_item.update_available:
+                    total_updates += 1
+        except TugAgentClientError as e:
+            logging.warning(
+                "Failed to get update count for host %s.%s: %s",
+                host.id,
+                host.name,
+                e,
+            )
+            errors.append(
+                HostErrorSchema(host_id=host.id, host_name=host.name, error=str(e))
+            )
+        except Exception as e:
+            logging.exception(
+                "Unexpected error getting update count for host %s.%s",
+                host.id,
+                host.name,
+            )
+            errors.append(
+                HostErrorSchema(
+                    host_id=host.id,
+                    host_name=host.name,
+                    error=f"Unknown error\n{e}",
+                )
+            )
 
-    return TotalUpdateCountResponseBodySchema.model_validate(
-        {"total_updates": total_updates}
+    return TotalUpdateCountResponseBodySchema(
+        total_updates=total_updates, errors=errors
     )
 
 

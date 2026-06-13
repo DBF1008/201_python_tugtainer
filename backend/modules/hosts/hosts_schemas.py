@@ -39,3 +39,7 @@ class HostSummary(BaseModel):
     total_images: int
     unused_images: int
     dangling_images: int
+    # Populated when the host could not be reached / queried. When set, the
+    # statistic fields are zeroed and the host is reported in a degraded state
+    # instead of failing the whole summary request.
+    error: str | None = None

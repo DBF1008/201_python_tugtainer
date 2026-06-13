@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Final, cast
 
 import aiohttp
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import Config
 from backend.core.agent_client import AgentClientManager
+from backend.exception import TugAgentClientError
 from backend.modules.containers.containers_model import ContainersModel
 from backend.modules.containers.containers_schemas import ContainersListItem
 from backend.modules.hosts.hosts_model import HostsModel
@@ -32,24 +34,61 @@ async def fetch_latest_release() -> dict[str, Any]:
             return await res.json()
 
 
-async def get_host_summary(host: HostsModel, session: AsyncSession) -> HostSummary:
-    if not host.enabled:
-        return HostSummary(
-            host_id=host.id,
-            host_name=host.name,
-            host_enabled=False,
-            total_containers=0,
-            by_status={},
-            by_health={},
-            by_protected={"true": 0, "false": 0},
-            by_check_enabled={"true": 0, "false": 0},
-            by_update_enabled={"true": 0, "false": 0},
-            by_update_available={"true": 0, "false": 0},
-            total_images=0,
-            unused_images=0,
-            dangling_images=0,
-        )
+def _empty_host_summary(
+    host: HostsModel,
+    *,
+    host_enabled: bool,
+    error: str | None = None,
+) -> HostSummary:
+    """Build a zeroed summary for a disabled or unreachable host.
 
+    Used both for disabled hosts and as a degraded fallback when a host's
+    agent cannot be reached, so a single failing host never breaks the
+    aggregate summary response.
+    """
+    return HostSummary(
+        host_id=host.id,
+        host_name=host.name,
+        host_enabled=host_enabled,
+        total_containers=0,
+        by_status={},
+        by_health={},
+        by_protected={"true": 0, "false": 0},
+        by_check_enabled={"true": 0, "false": 0},
+        by_update_enabled={"true": 0, "false": 0},
+        by_update_available={"true": 0, "false": 0},
+        total_images=0,
+        unused_images=0,
+        dangling_images=0,
+        error=error,
+    )
+
+
+async def get_host_summary(host: HostsModel, session: AsyncSession) -> HostSummary:
+    """Return summary statistics for a host.
+
+    Never raises on host-level failures: if the host is disabled or its agent
+    is unreachable/erroring, a degraded summary is returned with the ``error``
+    field populated so callers keep the data of the healthy hosts.
+    """
+    if not host.enabled:
+        return _empty_host_summary(host, host_enabled=False)
+
+    try:
+        return await _build_host_summary(host, session)
+    except TugAgentClientError as e:
+        logging.warning(
+            "Failed to build summary for host %s.%s: %s", host.id, host.name, e
+        )
+        return _empty_host_summary(host, host_enabled=True, error=str(e))
+    except Exception as e:
+        logging.exception(
+            "Unexpected error building summary for host %s.%s", host.id, host.name
+        )
+        return _empty_host_summary(host, host_enabled=True, error=f"Unknown error\n{e}")
+
+
+async def _build_host_summary(host: HostsModel, session: AsyncSession) -> HostSummary:
     client: Final = AgentClientManager.get_host_client(host)
     containers: Final = await client.container.list(
         GetContainerListBodySchema(all=True)

@@ -21,4 +21,9 @@ export interface IHostSummary {
   total_images: number;
   unused_images: number;
   dangling_images: number;
+  /**
+   * Set when the host could not be reached/queried. Statistic fields are
+   * zeroed in that case; healthy hosts still return their real data.
+   */
+  error?: string | null;
 }
