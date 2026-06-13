@@ -18,6 +18,7 @@ from backend.core.progress.progress_util import (
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
+from backend.enums.host_action_status_enum import EHostActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
 
 from .update_host_containers import update_host_containers
@@ -67,18 +68,23 @@ async def update_all_containers():
                     host,
                     client,
                 )
-                if result:
-                    results += [result]
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     f"Failed to update containers of {host.name}"
                 )
+                result = HostActionResult(
+                    host_id=host.id,
+                    host_name=host.name,
+                    status=EHostActionStatus.FAILED,
+                    error=str(exc),
+                )
+            results.append(result)
 
         cache.update(
             {
                 "status": EActionStatus.DONE,
                 "result": {
-                    item.host_id: item for item in results if item
+                    item.host_id: item for item in results
                 },
             }
         )

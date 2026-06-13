@@ -37,4 +37,9 @@ DEFAULT_NOTIFICATION_TEMPLATE = """\
 {% endif %}
 
 {% endfor %}
+{% for r in results if r.status == 'failed' %}
+## ⚠️ Host: {{ r.host_name }} — Failed
+{{ r.error or 'Unknown error' }}
+
+{% endfor %}
 """

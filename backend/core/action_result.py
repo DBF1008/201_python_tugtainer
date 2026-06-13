@@ -8,6 +8,8 @@ from python_on_whales.components.image.models import (
     ImageInspectResult,
 )
 
+from backend.enums.host_action_status_enum import EHostActionStatus
+
 ContainerCheckResultType = Literal[
     "not_available",
     "available",
@@ -40,3 +42,8 @@ class UpdatePlanResult:
 @dataclass
 class HostActionResult(UpdatePlanResult):
     prune_result: str | None = None
+    # Terminal outcome of the host action. Lets consumers (progress cache,
+    # notifications, frontend) tell apart success / skipped / failed instead
+    # of an empty result silently looking like "nothing to do".
+    status: EHostActionStatus = EHostActionStatus.SUCCESS
+    error: str | None = None

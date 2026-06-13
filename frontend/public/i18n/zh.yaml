@@ -60,6 +60,9 @@ ACTIONS:
   PRUNE_ALL: 全部清理
   PRUNE_ALL_HINT: 此开关对应 'docker image prune' 命令的 --all 参数。
   PRUNE_RESULT: 清理结果
+  HOST_FAILED: 失败
+  HOST_SKIPPED: 跳过
+  HOST_ERROR_UNKNOWN: 未知错误
 HOSTS:
   NO_HOSTS_FOUND: 未找到主机
   TABLE:

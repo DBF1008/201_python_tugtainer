@@ -30,8 +30,20 @@ export interface IUpdatePlanResult {
   items: IContainerActionResult[];
 }
 
+/**
+ * Terminal outcome of a host's check/update action.
+ * Lets consumers tell apart success / skipped / failed.
+ */
+export enum EHostActionStatus {
+  SUCCESS = 'success',
+  SKIPPED = 'skipped',
+  FAILED = 'failed',
+}
+
 export interface IHostActionResult extends IUpdatePlanResult {
   prune_result: string | null;
+  status: EHostActionStatus;
+  error: string | null;
 }
 
 export const ContainerCheckResultSeverity: Record<
@@ -45,3 +57,10 @@ export const ContainerCheckResultSeverity: Record<
   'rolled_back': 'warn',
   'failed': 'danger',
 };
+
+export const HostActionStatusSeverity: Record<EHostActionStatus, TagSeverity> =
+  {
+    [EHostActionStatus.SUCCESS]: 'success',
+    [EHostActionStatus.SKIPPED]: 'secondary',
+    [EHostActionStatus.FAILED]: 'danger',
+  };

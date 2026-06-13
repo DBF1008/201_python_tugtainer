@@ -24,6 +24,7 @@ from backend.core.update_actions.update_actions_plan import (
     build_update_plan,
 )
 from backend.enums.action_status_enum import EActionStatus
+from backend.enums.host_action_status_enum import EHostActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
 from shared.schemas.container_schemas import (
     GetContainerListBodySchema,
@@ -33,7 +34,7 @@ from shared.schemas.image_schemas import PruneImagesRequestBodySchema
 
 async def update_host_containers(
     host: HostsModel, client: AgentClient, manual: bool = False
-) -> HostActionResult | None:
+) -> HostActionResult:
     """
     Update containers of specified host.
     :param host: host info from db
@@ -48,7 +49,8 @@ async def update_host_containers(
 
     if not is_allowed_start_cache(state):
         logger.warning("Update already running. Exiting.")
-        return None
+        result.status = EHostActionStatus.SKIPPED
+        return result
 
     try:
         cache.set(
@@ -93,9 +95,11 @@ async def update_host_containers(
         cache.update({"status": EActionStatus.DONE, "result": result})
         logger.info("Update completed")
         return result
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to update")
+        result.status = EHostActionStatus.FAILED
+        result.error = str(exc)
         cache.update(
             {"status": EActionStatus.ERROR},
         )
-        return None
+        return result

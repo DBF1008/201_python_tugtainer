@@ -15,6 +15,7 @@ from backend.core.progress.progress_util import (
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
+from backend.enums.host_action_status_enum import EHostActionStatus
 from backend.modules.containers.containers_util import (
     get_host_containers,
 )
@@ -34,7 +35,7 @@ async def check_host_containers(
     host: HostsModel,
     client: AgentClient,
     manual: bool = False,
-) -> HostActionResult | None:
+) -> HostActionResult:
     """
     Check all host's containers.
     :param host: host info
@@ -53,7 +54,8 @@ async def check_host_containers(
 
     if not is_allowed_start_cache(state):
         logger.warning("Check action is already running. Exiting.")
-        return None
+        result.status = EHostActionStatus.SKIPPED
+        return result
 
     try:
         logger.info("Starting check action")
@@ -90,8 +92,10 @@ async def check_host_containers(
 
         cache.update({"status": EActionStatus.DONE, "result": result})
         return result
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to check host")
+        result.status = EHostActionStatus.FAILED
+        result.error = str(exc)
         cache.update(
             {"status": EActionStatus.ERROR},
         )

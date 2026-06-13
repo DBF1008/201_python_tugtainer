@@ -18,6 +18,7 @@ from backend.core.progress.progress_util import (
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
+from backend.enums.host_action_status_enum import EHostActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
 
 from .check_host_containers import check_host_containers
@@ -59,15 +60,20 @@ async def check_all_containers(
             try:
                 client = AgentClientManager.get_host_client(host)
                 result = await check_host_containers(host, client, manual)
-                if result:
-                    results += [result]
-            except Exception:
+            except Exception as exc:
                 logger.exception(f"Failed to check host {host.name}")
+                result = HostActionResult(
+                    host_id=host.id,
+                    host_name=host.name,
+                    status=EHostActionStatus.FAILED,
+                    error=str(exc),
+                )
+            results.append(result)
 
         cache.update(
             {
                 "status": EActionStatus.DONE,
-                "result": {item.host_id: item for item in results if item},
+                "result": {item.host_id: item for item in results},
             }
         )
         try:

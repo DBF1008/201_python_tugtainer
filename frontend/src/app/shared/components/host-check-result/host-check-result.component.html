@@ -1,7 +1,23 @@
 @if (result(); as res) {
   <h3>
     {{ res.host_name }}
+    @if (res.status !== EHostActionStatus.SUCCESS) {
+      <p-tag [severity]="HostActionStatusSeverity[res.status]">
+        {{
+          (res.status === EHostActionStatus.FAILED
+            ? 'ACTIONS.HOST_FAILED'
+            : 'ACTIONS.HOST_SKIPPED'
+          ) | translate
+        }}
+      </p-tag>
+    }
   </h3>
+
+  @if (res.status === EHostActionStatus.FAILED) {
+    <pre class="error">{{
+      res.error || ('ACTIONS.HOST_ERROR_UNKNOWN' | translate)
+    }}</pre>
+  }
 
   <section class="results">
     @for (item of res.items; track item.container.Id) {

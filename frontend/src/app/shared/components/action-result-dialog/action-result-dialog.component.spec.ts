@@ -7,6 +7,7 @@ import {
 import { DynamicDialogConfig } from 'primeng/dynamicdialog';
 import { By } from '@angular/platform-browser';
 import { HostCheckResultComponent } from '../host-check-result/host-check-result.component';
+import { EHostActionStatus } from '@shared/interfaces/check-result.interface';
 
 describe('ActionResultDialogComponent', () => {
   let component: ActionResultDialogComponent;
@@ -23,6 +24,8 @@ describe('ActionResultDialogComponent', () => {
             host_name: 'test',
             items: [],
             prune_result: '',
+            status: EHostActionStatus.SUCCESS,
+            error: null,
           },
         ],
         pruneResult: 'test',

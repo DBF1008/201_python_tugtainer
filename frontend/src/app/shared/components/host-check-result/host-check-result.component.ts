@@ -1,8 +1,11 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import {
   ContainerCheckResultSeverity,
+  EHostActionStatus,
+  HostActionStatusSeverity,
   IHostActionResult,
 } from '@shared/interfaces/check-result.interface';
+import { TranslatePipe } from '@ngx-translate/core';
 import { TagModule } from 'primeng/tag';
 
 /**
@@ -10,7 +13,7 @@ import { TagModule } from 'primeng/tag';
  */
 @Component({
   selector: 'app-host-check-result',
-  imports: [TagModule],
+  imports: [TagModule, TranslatePipe],
   templateUrl: './host-check-result.component.html',
   styleUrl: './host-check-result.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -20,4 +23,6 @@ export class HostCheckResultComponent {
 
   protected readonly ContainerCheckResultSeverity =
     ContainerCheckResultSeverity;
+  protected readonly HostActionStatusSeverity = HostActionStatusSeverity;
+  protected readonly EHostActionStatus = EHostActionStatus;
 }
