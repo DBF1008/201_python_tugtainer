@@ -32,6 +32,8 @@ export interface IUpdatePlanResult {
 
 export interface IHostActionResult extends IUpdatePlanResult {
   prune_result: string | null;
+  host_status: 'success' | 'error';
+  error_message: string | null;
 }
 
 export const ContainerCheckResultSeverity: Record<

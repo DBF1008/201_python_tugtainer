@@ -37,4 +37,12 @@ DEFAULT_NOTIFICATION_TEMPLATE = """\
 {% endif %}
 
 {% endfor %}
+\
+{% set failed_hosts = results | host_errors %}
+{% if failed_hosts %}
+## Host Errors
+{% for r in failed_hosts %}
+- **{{ r.host_name }}**: {{ r.error_message }}
+{% endfor %}
+{% endif %}
 """

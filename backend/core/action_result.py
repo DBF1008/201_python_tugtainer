@@ -40,3 +40,5 @@ class UpdatePlanResult:
 @dataclass
 class HostActionResult(UpdatePlanResult):
     prune_result: str | None = None
+    host_status: Literal["success", "error"] = "success"
+    error_message: str | None = None

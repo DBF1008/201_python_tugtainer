@@ -23,6 +23,8 @@ describe('ActionResultDialogComponent', () => {
             host_name: 'test',
             items: [],
             prune_result: '',
+            host_status: 'success',
+            error_message: null,
           },
         ],
         pruneResult: 'test',

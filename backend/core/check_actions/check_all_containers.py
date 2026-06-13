@@ -61,8 +61,16 @@ async def check_all_containers(
                 result = await check_host_containers(host, client, manual)
                 if result:
                     results += [result]
-            except Exception:
+            except Exception as e:
                 logger.exception(f"Failed to check host {host.name}")
+                results.append(
+                    HostActionResult(
+                        host_id=host.id,
+                        host_name=host.name,
+                        host_status="error",
+                        error_message=str(e),
+                    )
+                )
 
         cache.update(
             {

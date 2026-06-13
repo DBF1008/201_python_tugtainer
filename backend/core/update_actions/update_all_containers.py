@@ -69,9 +69,17 @@ async def update_all_containers():
                 )
                 if result:
                     results += [result]
-            except Exception:
+            except Exception as e:
                 logger.exception(
                     f"Failed to update containers of {host.name}"
+                )
+                results.append(
+                    HostActionResult(
+                        host_id=host.id,
+                        host_name=host.name,
+                        host_status="error",
+                        error_message=str(e),
+                    )
                 )
 
         cache.update(

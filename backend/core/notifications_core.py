@@ -29,6 +29,11 @@ def any_worthy(items: list[ContainerActionResult]) -> bool:
     )
 
 
+def host_errors(results: list[HostActionResult]) -> list[HostActionResult]:
+    """Filter results to only hosts that encountered errors."""
+    return [r for r in results if r.host_status == "error"]
+
+
 tt_sentinel = object()
 bt_sentinel = object()
 u_sentinel = object()
@@ -70,6 +75,7 @@ async def send_check_notification(
             keep_trailing_newline=False,
         )
         jinja2_env.filters["any_worthy"] = any_worthy
+        jinja2_env.filters["host_errors"] = host_errors
         context: Final = {
             "results": results,
             "hostname": Config.HOSTNAME,
