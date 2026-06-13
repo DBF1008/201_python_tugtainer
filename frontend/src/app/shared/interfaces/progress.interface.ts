@@ -11,6 +11,7 @@ export enum EActionStatus {
   PREPARING = 'PREPARING',
   CHECKING = 'CHECKING',
   UPDATING = 'UPDATING',
+  PRUNING = 'PRUNING',
   DONE = 'DONE',
   ERROR = 'ERROR',
 }

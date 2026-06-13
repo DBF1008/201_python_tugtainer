@@ -23,16 +23,16 @@ from backend.modules.hosts.hosts_model import HostsModel
 from .update_host_containers import update_host_containers
 
 
-async def update_all_containers():
+async def update_all_containers(task_id: str | None = None):
     """
     Main func for scheduled/manual update of all containers
     marked for it, for all specified docker hosts.
     Should not raises errors, only logging.
+    :param task_id: unique task identifier for progress tracking
     """
     logger: Final = logging.getLogger("update_all_containers")
-    cache: Final = ProgressCache[AllActionProgress](
-        ALL_CONTAINERS_STATUS_KEY
-    )
+    cache_key = task_id if task_id else ALL_CONTAINERS_STATUS_KEY
+    cache: Final = ProgressCache[AllActionProgress](cache_key)
     state: Final = cache.get()
 
     if not is_allowed_start_cache(state):

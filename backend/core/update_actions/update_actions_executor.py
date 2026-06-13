@@ -64,12 +64,13 @@ async def execute_update_plan(
     containers: list[ContainerInspectResult],
     plan: UpdatePlan,
     docker_version: DockerVersionScheme | None,
+    task_id: str | None = None,
 ) -> UpdatePlanResult | None:
     logger.info(
         f"to_update={plan.to_update}, affected={plan.affected}, order={plan.order}"
     )
     delay: Final = SettingsStorage.get(ESettingKey.REGISTRY_REQ_DELAY)
-    status_key: Final = get_plan_cache_key(host, plan)
+    status_key: Final = get_plan_cache_key(host, plan, task_id)
     cache: Final = ProgressCache[UpdatePlanProgress](status_key)
     state: Final = cache.get()
     if not is_allowed_start_cache(state):

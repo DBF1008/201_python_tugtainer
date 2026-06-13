@@ -53,6 +53,7 @@ async def check_one_container(
     client: AgentClient,
     host: HostsModel,
     container: ContainerInspectResult,
+    task_id: str | None = None,
 ) -> ContainerActionResult:
     """
     Check if there is new image for the container.
@@ -63,6 +64,7 @@ async def check_one_container(
     cache_key: Final = get_container_cache_key(
         host,
         container,
+        task_id,
     )
     cache: Final = ProgressCache[ContainerActionProgress](cache_key)
     state: Final = cache.get()

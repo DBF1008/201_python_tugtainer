@@ -16,18 +16,27 @@ from backend.modules.hosts.hosts_model import HostsModel
 ALL_CONTAINERS_STATUS_KEY = str(uuid.uuid4())
 
 
-def get_host_cache_key(host: HostsModel) -> str:
-    return f"{host.id}:{host.name}"
+def get_host_cache_key(
+    host: HostsModel, task_id: str | None = None
+) -> str:
+    base = f"{host.id}:{host.name}"
+    return f"{base}:{task_id}" if task_id else base
 
 
-def get_plan_cache_key(host: HostsModel, plan: UpdatePlan) -> str:
-    return f"{get_host_cache_key(host)}:{sorted(plan.to_update)}"
+def get_plan_cache_key(
+    host: HostsModel, plan: UpdatePlan, task_id: str | None = None
+) -> str:
+    base = f"{get_host_cache_key(host)}:{sorted(plan.to_update)}"
+    return f"{base}:{task_id}" if task_id else base
 
 
 def get_container_cache_key(
-    host: HostsModel, container: ContainerInspectResult
+    host: HostsModel,
+    container: ContainerInspectResult,
+    task_id: str | None = None,
 ) -> str:
-    return f"{get_host_cache_key(host)}:{container.name}"
+    base = f"{get_host_cache_key(host)}:{container.name}"
+    return f"{base}:{task_id}" if task_id else base
 
 
 def is_allowed_start_cache(

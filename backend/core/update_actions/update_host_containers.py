@@ -32,7 +32,8 @@ from shared.schemas.image_schemas import PruneImagesRequestBodySchema
 
 
 async def update_host_containers(
-    host: HostsModel, client: AgentClient, manual: bool = False
+    host: HostsModel, client: AgentClient, manual: bool = False,
+    task_id: str | None = None,
 ) -> HostActionResult | None:
     """
     Update containers of specified host.
@@ -41,7 +42,7 @@ async def update_host_containers(
     :param manual: manual update includes all containers
     """
     result: Final = HostActionResult(host_id=host.id, host_name=host.name)
-    status_key: Final = get_host_cache_key(host)
+    status_key: Final = get_host_cache_key(host, task_id)
     cache: Final = ProgressCache[HostActionProgress](status_key)
     state: Final = cache.get()
     logger: Final = logging.getLogger(f"update_host_containers.{host.id}:{host.name}")

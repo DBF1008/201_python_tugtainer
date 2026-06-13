@@ -34,6 +34,7 @@ async def check_host_containers(
     host: HostsModel,
     client: AgentClient,
     manual: bool = False,
+    task_id: str | None = None,
 ) -> HostActionResult | None:
     """
     Check all host's containers.
@@ -44,7 +45,7 @@ async def check_host_containers(
     result: Final = HostActionResult(
         host_id=host.id, host_name=host.name
     )
-    cache_key: Final = get_host_cache_key(host)
+    cache_key: Final = get_host_cache_key(host, task_id)
     cache: Final = ProgressCache[HostActionProgress](cache_key)
     state: Final = cache.get()
     logger: Final = logging.getLogger(

@@ -25,12 +25,15 @@ from .check_host_containers import check_host_containers
 
 async def check_all_containers(
     manual: bool = False,
+    task_id: str | None = None,
 ) -> None:
     """
     Check all containers of all hosts
     :param manual: manual check includes all containers
+    :param task_id: unique task identifier for progress tracking
     """
-    cache: Final = ProgressCache[AllActionProgress](ALL_CONTAINERS_STATUS_KEY)
+    cache_key = task_id if task_id else ALL_CONTAINERS_STATUS_KEY
+    cache: Final = ProgressCache[AllActionProgress](cache_key)
     state: Final = cache.get()
     logger: Final = logging.getLogger("check_all_containers")
 
