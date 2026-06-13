@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "agent",
+      "command": "source .venv/bin/activate && python -m agent.dev",
+      "type": "shell",
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "fileLocation": "relative",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting development server",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    },
+    {
+      "label": "backend",
+      "dependsOn": ["agent"],
+      "command": "source .venv/bin/activate && python -m backend.dev",
+      "type": "shell",
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$tsc-watch",
+        "fileLocation": "relative",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting development server",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    },
+    {
+      "label": "frontend",
+      "dependsOn": ["agent", "backend"],
+      "command": "cd frontend && npm start",
+      "type": "shell"
+    },
+    {
+      "label": "Dev Runner",
+      "dependsOn": ["agent", "backend", "frontend"],
+      "runOptions": { "runOn": "default" },
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

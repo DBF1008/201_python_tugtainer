@@ -1,0 +1,131 @@
+import logging
+from typing import Any, Final, cast
+
+import jinja2
+from apprise import Apprise, NotifyFormat
+from apprise.exception import AppriseException
+from jinja2.sandbox import SandboxedEnvironment
+
+from backend.config import Config
+from backend.core.action_result import (
+    ContainerActionResult,
+    HostActionResult,
+)
+from backend.exception import TugNotificationException
+from backend.modules.settings.settings_enum import ESettingKey
+from backend.modules.settings.settings_storage import SettingsStorage
+
+
+def any_worthy(items: list[ContainerActionResult]) -> bool:
+    return any(
+        item.result
+        in [
+            "available",
+            "updated",
+            "rolled_back",
+            "failed",
+        ]
+        for item in items
+    )
+
+
+tt_sentinel = object()
+bt_sentinel = object()
+u_sentinel = object()
+
+
+async def send_check_notification(
+    results: list[HostActionResult],
+    title_template: str | None = cast(None, tt_sentinel),
+    body_template: str | None = cast(None, bt_sentinel),
+    urls: str | None = cast(None, u_sentinel),
+):
+    """
+    Send check results notification.
+    :param results: results of check/update process
+    :param title_template: override title template
+    :param body_template: override body template
+    :param urls: override urls
+    """
+    logger: Final = logging.getLogger("send_check_notification")
+    try:
+        if title_template == tt_sentinel:
+            title_template = SettingsStorage.get(
+                ESettingKey.NOTIFICATION_TITLE_TEMPLATE
+            )
+        if body_template == bt_sentinel:
+            body_template = SettingsStorage.get(ESettingKey.NOTIFICATION_BODY_TEMPLATE)
+        if urls == u_sentinel:
+            urls = SettingsStorage.get(ESettingKey.NOTIFICATION_URLS)
+
+        if not urls:
+            raise TugNotificationException(
+                "Failed to send notification. URLs is undefined."
+            )
+        _urls = [line.strip() for line in urls.splitlines() if line.strip()]
+
+        jinja2_env: Final = SandboxedEnvironment(
+            trim_blocks=True,
+            lstrip_blocks=True,
+            keep_trailing_newline=False,
+        )
+        jinja2_env.filters["any_worthy"] = any_worthy
+        context: Final = {
+            "results": results,
+            "hostname": Config.HOSTNAME,
+        }
+
+        title = ""
+        if title_template:
+            _title_template = jinja2_env.from_string(title_template)
+            title = _title_template.render(**context)
+        body = ""
+        if body_template:
+            _body_template = jinja2_env.from_string(body_template)
+            body = _body_template.render(**context)
+
+        if not body or not body.strip():
+            logger.warning("No notification body after template render. Exiting.")
+            return
+
+        return await send_notification(title, body, urls=_urls)
+    except jinja2.TemplateError as e:
+        logger.exception("Failed to render notification template")
+        raise TugNotificationException(
+            f"Failed to render notification template: {e}"
+        ) from e
+
+
+async def send_notification(
+    title: str,
+    body: str,
+    urls: list[str],
+    body_format: NotifyFormat = NotifyFormat.MARKDOWN,
+):
+    logger: Final = logging.getLogger("send_notification")
+    logger.debug(f"Title: {title}")
+    logger.debug(f"Body: {body}")
+
+    if urls:
+        try:
+            logger.info("Sending notification")
+            _apprise: Final = Apprise()
+            _apprise.add(cast(Any, urls))
+            result: Final = await _apprise.async_notify(
+                title=title,
+                body=body,
+                body_format=body_format,
+            )
+            if result is False:
+                raise TugNotificationException(
+                    "Failed to send notification, but no exception was raised by Apprise."
+                )
+        except AppriseException as e:
+            logger.exception("Failed to send notification")
+            raise TugNotificationException(
+                f"Failed to send notification. Apprise exception: {e}"
+            ) from e
+    else:
+        raise TugNotificationException(
+            "Failed to send notification. URLs is undefined."
+        )

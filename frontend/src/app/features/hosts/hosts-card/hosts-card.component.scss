@@ -1,0 +1,34 @@
+:host {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  .hosts-form {
+    display: flex;
+    flex-direction: column;
+
+    .accordion-content {
+      width: 100%;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+
+      .help-text {
+        width: 100%;
+        white-space: pre-line;
+      }
+    }
+
+    .buttons {
+      display: inline-flex;
+      align-items: center;
+      gap: 1rem;
+      padding-top: 1rem;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+  }
+}

@@ -1,0 +1,21 @@
+networks:
+  tugtainer:
+    driver: bridge
+services:
+  app:
+    container_name: tugtainer
+    build:
+      context: https://github.com/Quenary/tugtainer.git#latest
+      dockerfile: Dockerfile.app
+      args:
+        VERSION: my latest build
+    volumes:
+      - tugtainer_data:/tugtainer
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - tugtainer
+    ports:
+      - '9412:80'
+volumes:
+  tugtainer_data:

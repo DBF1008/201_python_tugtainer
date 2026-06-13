@@ -1,0 +1,180 @@
+<p-toolbar>
+  <ng-template #start>
+    <p-button
+      icon="pi pi-refresh"
+      text
+      [loading]="containersStore.loading()"
+      (onClick)="containersStore.loadSelected()"></p-button>
+  </ng-template>
+
+  <ng-template #end>
+    <app-container-actions
+      withControl
+      [item]="containersStore.selected()"
+      [host]="containersStore.host()"
+      (OnCheck)="onCheck()"
+      (OnUpdate)="onUpdate()"
+      (OnCommand)="onCommand($event)">
+    </app-container-actions>
+  </ng-template>
+</p-toolbar>
+
+<p-accordion
+  [value]="accordionValue()"
+  (valueChange)="accordionValue.set($event)">
+  <p-accordion-panel value="general">
+    <p-accordion-header>
+      {{ 'CONTAINERS.GENERAL.LABEL' | translate }}
+    </p-accordion-header>
+    <p-accordion-content>
+      @if (containersStore.selected(); as _item) {
+        <section class="general-content">
+          <app-boolean-field>
+            <p-toggle-switch
+              inputId="container-check-enabled"
+              [ngModel]="_item.check_enabled"
+              (ngModelChange)="patchContainer({ check_enabled: $event })"></p-toggle-switch>
+            <label for="container-check-enabled">
+              {{ 'CONTAINERS.CHECK' | translate }}
+            </label>
+          </app-boolean-field>
+          @if (!_item.protected) {
+            <app-boolean-field>
+              <p-toggle-switch
+                inputId="container-update-enabled"
+                [ngModel]="_item.update_enabled"
+                (ngModelChange)="patchContainer({ update_enabled: $event })"></p-toggle-switch>
+              <label for="container-update-enabled">
+                {{ 'CONTAINERS.UPDATE' | translate }}
+              </label>
+            </app-boolean-field>
+          }
+          <section class="general-content-state">
+            @if (_item.protected) {
+              <p-tag
+                class="general-content-state-tag"
+                severity="warn"
+                icon="pi pi-lock"
+                [value]="'CONTAINERS.PROTECTED' | translate"
+                [pTooltip]="'CONTAINERS.PROTECTED_CONTAINER_HINT' | translate">
+              </p-tag>
+            }
+            @if (_item.update_available) {
+              <p-tag
+                class="general-content-state-tag"
+                severity="success"
+                icon="pi pi-check-circle"
+                [value]="'CONTAINERS.UPDATE_AVAILABLE' | translate"></p-tag>
+            }
+            <p-tag
+              class="general-content-state-tag"
+              [severity]="EContainerStatusSeverity[_item.status]"
+              [value]="
+                _item.status === 'exited' ? _item.status + ' ' + _item.exit_code : _item.status
+              "></p-tag>
+            <p-tag
+              class="general-content-state-tag"
+              [severity]="EContainerHealthSeverity[_item.health] ?? 'secondary'"
+              [value]="_item.health"></p-tag>
+          </section>
+
+          <p-ifta-label>
+            <input
+              id="container-name"
+              pInputText
+              readonly
+              [value]="_item.name" />
+            <label for="container-name">
+              {{ 'CONTAINERS.NAME' | translate }}
+            </label>
+          </p-ifta-label>
+
+          <p-ifta-label>
+            <input
+              id="container-image"
+              pInputText
+              readonly
+              [value]="_item.image" />
+            <label for="container-image">
+              {{ 'CONTAINERS.IMAGE' | translate }}
+            </label>
+          </p-ifta-label>
+
+          <p-ifta-label style="width: 100%">
+            <textarea
+              fluid
+              style="resize: none"
+              id="container-id"
+              pTextarea
+              readonly
+              rows="2"
+              [value]="_item.container_id"></textarea>
+            <label for="container-id">
+              {{ 'CONTAINERS.CONTAINER_ID' | translate }}
+            </label>
+          </p-ifta-label>
+
+          <p-ifta-label style="width: 100%">
+            <textarea
+              fluid
+              style="resize: none"
+              id="container-ports"
+              pTextarea
+              readonly
+              [rows]="itemPortsRows()"
+              [value]="itemPorts()"></textarea>
+            <label for="container-ports">
+              {{ 'CONTAINERS.PORTS' | translate }}
+            </label>
+          </p-ifta-label>
+
+          <p-ifta-label>
+            <input
+              id="container-checked-at"
+              pInputText
+              readonly
+              [value]="_item.checked_at | dayjs" />
+            <label for="container-checked-at">
+              {{ 'CONTAINERS.CHECKED_AT' | translate }}
+            </label>
+          </p-ifta-label>
+
+          <p-ifta-label>
+            <input
+              id="container-updated-at"
+              pInputText
+              readonly
+              [value]="_item.updated_at | dayjs" />
+            <label for="container-updated-at">
+              {{ 'CONTAINERS.UPDATED_AT' | translate }}
+            </label>
+          </p-ifta-label>
+        </section>
+      }
+    </p-accordion-content>
+  </p-accordion-panel>
+
+  <p-accordion-panel value="inspect">
+    <p-accordion-header>
+      {{ 'INSPECT.LABEL' | translate }}
+    </p-accordion-header>
+    <p-accordion-content class="inspect-content">
+      @defer (when inspect()) {
+        <app-inspect [inspect]="inspect()"> </app-inspect>
+      }
+    </p-accordion-content>
+  </p-accordion-panel>
+
+  <p-accordion-panel value="logs">
+    <p-accordion-header>
+      {{ 'CONTAINERS.LOGS.LABEL' | translate }}
+    </p-accordion-header>
+    <p-accordion-content>
+      @defer (when accordionValue() === 'logs') {
+        <app-container-card-logs
+          [hostId]="containersStore.hostId()"
+          [containerNameOrId]="containersStore.selectedNameOrId()"></app-container-card-logs>
+      }
+    </p-accordion-content>
+  </p-accordion-panel>
+</p-accordion>

@@ -1,0 +1,145 @@
+@for (form of formArray.controls; track form) {
+  <form
+    class="settings-form-group"
+    [formGroup]="form">
+    @if (form.controls.key.value; as key) {
+      <ng-container
+        [ngTemplateOutlet]="valueInputTemplate"
+        [ngTemplateOutletContext]="{
+          value_type: form.controls.value_type.value,
+          key: key,
+          control: form.controls.value,
+        }"></ng-container>
+
+      @if (keyTranslates[key]?.HINT; as hint) {
+        <p-button
+          icon="pi pi-question"
+          severity="contrast"
+          [pTooltip]="hint"
+          tooltipPosition="left"
+          rounded="true"
+          (onClick)="onHintClick(keyTranslates[key]?.LINK)">
+        </p-button>
+      }
+    }
+  </form>
+}
+
+<p-button
+  [loading]="settingsStore.loading()"
+  severity="success"
+  (onClick)="onTestNotification()">
+  <i class="pi pi-send"></i>
+  <span pButtonLabel>
+    {{ 'SETTINGS.BY_KEY.SEND_TEST_NOTIFICATION' | translate }}
+  </span>
+</p-button>
+
+<p-button
+  [loading]="settingsStore.loading()"
+  [disabled]="!formArray.dirty"
+  (onClick)="submit()">
+  <i class="pi pi-save"></i>
+  <span pButtonLabel>
+    {{ 'GENERAL.SAVE' | translate }}
+  </span>
+</p-button>
+
+<ng-template
+  #valueInputTemplate
+  let-key="key"
+  let-value_type="value_type"
+  let-control="control">
+  @switch (key) {
+    @case (ESettingKey.TIMEZONE) {
+      <p-iftalabel style="width: 100%">
+        <p-autocomplete
+          fluid
+          inputId="value-{{ key }}"
+          [suggestions]="displayedTimezones()"
+          [dropdown]="true"
+          (completeMethod)="timezonesAutocompleteEvent.set($event)"
+          [formControl]="control"
+          appendTo="body">
+        </p-autocomplete>
+        <label for="value-{{ key }}">
+          {{ keyTranslates[key]?.LABEL ?? key }}
+        </label>
+      </p-iftalabel>
+    }
+    @case (ESettingKey.NOTIFICATION_URLS) {
+      <p-iftalabel style="width: 100%">
+        <textarea
+          pTextarea
+          rows="3"
+          id="value-{{ key }}"
+          [formControl]="control"></textarea>
+        <label for="value-{{ key }}">
+          {{ keyTranslates[key]?.LABEL ?? key }}
+        </label>
+      </p-iftalabel>
+    }
+    @case (ESettingKey.INSECURE_REGISTRIES) {
+      <p-iftalabel style="width: 100%">
+        <textarea
+          pTextarea
+          rows="3"
+          id="value-{{ key }}"
+          [formControl]="control"></textarea>
+        <label for="value-{{ key }}">
+          {{ keyTranslates[key]?.LABEL ?? key }}
+        </label>
+      </p-iftalabel>
+    }
+    @case (ESettingKey.NOTIFICATION_BODY_TEMPLATE) {
+      <p-iftalabel style="width: 100%">
+        <textarea
+          pTextarea
+          rows="15"
+          id="value-{{ key }}"
+          [formControl]="control"></textarea>
+        <label for="value-{{ key }}">
+          {{ keyTranslates[key]?.LABEL ?? key }}
+        </label>
+      </p-iftalabel>
+    }
+    @default {
+      @switch (value_type) {
+        @case ('bool') {
+          <app-boolean-field style="flex: 1">
+            <p-toggle-switch
+              inputId="value-{{ key }}"
+              [formControl]="control"></p-toggle-switch>
+            <label for="value-{{ key }}">
+              {{ keyTranslates[key]?.LABEL ?? key }}
+            </label>
+          </app-boolean-field>
+        }
+        @case ('str') {
+          <p-iftalabel style="width: 100%">
+            <input
+              fluid
+              id="value-{{ key }}"
+              type="text"
+              pInputText
+              [formControl]="control" />
+            <label for="value-{{ key }}">
+              {{ keyTranslates[key]?.LABEL ?? key }}
+            </label>
+          </p-iftalabel>
+        }
+        @default {
+          <p-iftalabel style="width: 100%">
+            <p-input-number
+              fluid
+              inputId="value-{{ key }}"
+              [formControl]="control"></p-input-number>
+            <label for="value-{{ key }}">
+              {{ keyTranslates[key]?.LABEL ?? key }}
+            </label>
+          </p-iftalabel>
+        }
+      }
+    }
+  }
+</ng-template>

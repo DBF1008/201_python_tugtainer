@@ -1,0 +1,102 @@
+name: Run Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  frontend-tests:
+    name: Run Frontend Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-frontend-deps
+        with:
+          path: frontend
+
+      - name: Run tests
+        run: npm run test:ci
+
+  frontend-lint:
+    name: Run Frontend Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-frontend-deps
+        with:
+          path: frontend
+
+      - name: Run lint
+        run: npm run lint
+
+  frontend-prettier:
+    name: Run Frontend Prettier Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-frontend-deps
+        with:
+          path: frontend
+
+      - name: Run Prettier Check
+        run: npm run prettier-check
+
+  backend-tests:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-python-env
+
+      - name: Run pytest
+        run: python -m pytest
+
+  backend-lint:
+    name: Run Backend Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-python-env
+
+      - name: Run Ruff
+        run: ruff check agent backend shared
+
+  backend-typechecks:
+    name: Run Backend Typechecks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-python-env
+
+      - name: Run Mypy
+        run: mypy agent backend shared

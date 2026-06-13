@@ -1,0 +1,8 @@
+@if (showTable()) {
+  <app-containers-table> </app-containers-table>
+}
+
+<router-outlet
+  (activate)="showTable.set(false)"
+  (deactivate)="showTable.set(true)">
+</router-outlet>

@@ -1,0 +1,122 @@
+from typing import Any, cast
+
+from packaging import version
+from python_on_whales.components.container.models import (
+    ContainerConfig,
+    ContainerHostConfig,
+    ContainerInspectResult,
+    NetworkSettings,
+)
+from python_on_whales.utils import ValidPortMapping
+
+from shared.schemas.docker_version_scheme import DockerVersionScheme
+from shared.util.get_docker_client_api_version import (
+    get_docker_client_api_version,
+)
+
+from .map_port_bindings_to_list import map_port_bindings_to_list
+
+
+def get_container_net_kwargs(
+    container: ContainerInspectResult,
+    docker_version: DockerVersionScheme | None,
+) -> tuple[dict[Any, Any], list[list[str]]]:
+    """
+    Get container networking params dict that matches kwargs for create/run.
+    :returns 0: dict of params
+    :returns 1: list of docker commands to be executed after container creation, in list format e.g. ["network", "connect", ...]
+    """
+    COMMANDS: list[list[str]] = []
+    ID = container.id or ""
+    CONFIG = container.config or ContainerConfig()
+    HOST_CONFIG = container.host_config or ContainerHostConfig()
+    NETWORK_SETTINGS = container.network_settings or NetworkSettings()
+    docker_client_api_version = get_docker_client_api_version(docker_version)
+
+    DNS: list[str] = HOST_CONFIG.dns or []
+    DNS_OPTIONS: list[str] = HOST_CONFIG.dns_options or []
+    DNS_SEARCH: list[str] = HOST_CONFIG.dns_search or []
+    HOSTNAME: str | None = CONFIG.hostname
+    IP: str | None = None
+    IP6: str | None = None
+    LINK: list[str] = HOST_CONFIG.links or []
+    MAC_ADDRESS: str | None = None
+    NETWORKS: list[str] = []
+    NETWORK_ALIASES: list[str] = []
+    PUBLISH: list[ValidPortMapping] = map_port_bindings_to_list(
+        HOST_CONFIG.port_bindings
+    )
+    PUBLISH_ALL: bool = bool(HOST_CONFIG.publish_all_ports)
+
+    # Possible values: bridge | none | container:<id> | user-defined | host
+    NETWORK_MODE = HOST_CONFIG.network_mode
+
+    if NETWORK_SETTINGS.networks:
+        NETWORKS_KEYS = list(NETWORK_SETTINGS.networks.keys())
+        MAIN_NETWORK = NETWORK_SETTINGS.networks[NETWORKS_KEYS[0]]
+        NETWORKS = [NETWORKS_KEYS[0]]
+        NETWORK_ALIASES = MAIN_NETWORK.aliases or []
+        if MAIN_NETWORK.ipam_config:
+            IP = MAIN_NETWORK.ipam_config.ipv4_address
+            IP6 = MAIN_NETWORK.ipam_config.ipv6_address
+            # preserve mac address if static ips used
+            # https://github.com/Quenary/tugtainer/issues/126
+            MAC_ADDRESS = MAIN_NETWORK.mac_address or CONFIG.mac_address
+        for net in NETWORKS_KEYS[1:]:
+            # Additional networks returned as commands
+            # as docker cli doesn't support multiple aliases for multiple networks inline (in create/run)
+            _cmd = ["network", "connect"]
+            aliases = NETWORK_SETTINGS.networks[net].aliases or []
+            for a in aliases:
+                _cmd += ["--alias", a]
+            ipam = NETWORK_SETTINGS.networks[net].ipam_config
+            if ipam:
+                if ipam.ipv4_address:
+                    _cmd += ["--ip", ipam.ipv4_address]
+                if ipam.ipv6_address:
+                    _cmd += ["--ip6", ipam.ipv6_address]
+                # preserve mac address if static ips used
+                # https://github.com/Quenary/tugtainer/issues/126
+                MAC_ADDRESS = MAC_ADDRESS or NETWORK_SETTINGS.networks[net].mac_address
+            _cmd += [net, cast(str, container.name)]
+            COMMANDS.append(_cmd)
+    elif NETWORK_MODE:
+        NETWORKS = [NETWORK_MODE]
+
+    # Do not preserve generated hostname
+    if HOSTNAME and HOSTNAME in ID:
+        HOSTNAME = None
+
+    # Remove unsupported values
+    if NETWORK_MODE and (
+        NETWORK_MODE in ["host", "none"] or NETWORK_MODE.startswith("container:")
+    ):
+        DNS = []
+        DNS_OPTIONS = []
+        DNS_SEARCH = []
+        HOSTNAME = None
+        IP = None
+        IP6 = None
+        MAC_ADDRESS = None
+        LINK = []
+        NETWORK_ALIASES = []
+        PUBLISH = []
+        PUBLISH_ALL = False
+
+    if docker_client_api_version and docker_client_api_version < version.parse("1.44"):
+        MAC_ADDRESS = None
+
+    return {
+        "dns": DNS,
+        "dns_options": DNS_OPTIONS,
+        "dns_search": DNS_SEARCH,
+        "hostname": HOSTNAME,
+        "ip": IP,
+        "ip6": IP6,
+        "link": LINK,
+        "mac_address": MAC_ADDRESS,
+        "networks": NETWORKS,
+        "network_aliases": NETWORK_ALIASES,
+        "publish": PUBLISH,
+        "publish_all": PUBLISH_ALL,
+    }, COMMANDS

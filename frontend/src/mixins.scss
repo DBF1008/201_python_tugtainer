@@ -1,0 +1,75 @@
+// Mixins for "floating" cards like auth or register components
+@mixin floating-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+}
+@mixin floating-card-surface {
+  background-color: var(--p-content-background);
+  color: var(--p-content-color);
+  border-radius: var(--p-border-radius-lg);
+  width: 100%;
+  max-width: 600px;
+  transition: width 0.3s;
+  padding: 16px;
+  @media screen and (width > 767px) {
+    width: 40%;
+  }
+}
+// Mixin for flexible containers e.g. forms, card, code-examples,
+// that needs to be displayed as one/multiple "columns" on
+// different devices.
+@mixin flex-container($maxCols: 6, $breakpoint: 400px) {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  overflow: hidden;
+
+  $gap: 16px;
+  gap: $gap;
+
+  & > * {
+    width: 100%;
+    transition: width 0.15s ease-in-out;
+  }
+
+  @for $i from 1 through $maxCols - 1 {
+    $cols: $i + 1;
+    $_breakpoint: $breakpoint * $i;
+
+    @media (width > $_breakpoint) {
+      & > * {
+        width: calc(100% / #{$cols} - $gap * $i / $cols);
+      }
+    }
+  }
+}
+// Mixin for buttons of flex-container
+@mixin flex-container-buttons {
+  flex-basis: 100%;
+  display: inline-flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+// Mixin for main route component e.g. containers, images
+@mixin main-component {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+@mixin p-table {
+  width: 100%;
+  flex: 1;
+  overflow: hidden;
+  overflow-y: auto;
+}

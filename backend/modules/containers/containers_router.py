@@ -1,0 +1,378 @@
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, cast
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from python_on_whales.components.container.models import (
+    ContainerInspectResult,
+)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.core.agent_client import AgentClientManager
+from backend.core.check_actions.check_all_containers import (
+    check_all_containers,
+)
+from backend.core.check_actions.check_host_containers import (
+    check_host_containers,
+)
+from backend.core.check_actions.check_one_container import (
+    check_one_container,
+)
+from backend.core.container_util.is_protected_container import is_protected_container
+from backend.core.progress.progress_cache import ProgressCache
+from backend.core.progress.progress_schemas import (
+    AllActionProgress,
+    ContainerActionProgress,
+    HostActionProgress,
+    UpdatePlanProgress,
+)
+from backend.core.progress.progress_util import (
+    ALL_CONTAINERS_STATUS_KEY,
+    get_container_cache_key,
+    get_host_cache_key,
+    get_plan_cache_key,
+)
+from backend.core.update_actions.update_actions_executor import (
+    execute_update_plan,
+)
+from backend.core.update_actions.update_actions_plan import (
+    build_update_plan,
+)
+from backend.core.update_actions.update_all_containers import (
+    update_all_containers,
+)
+from backend.core.update_actions.update_host_containers import (
+    update_host_containers,
+)
+from backend.db.session import get_async_session
+from backend.modules.auth.auth_util import is_authorized
+from backend.modules.hosts.hosts_model import HostsModel
+from backend.modules.hosts.hosts_util import get_host
+from shared.schemas.container_schemas import (
+    GetContainerListBodySchema,
+    GetContainerLogsRequestBody,
+)
+
+from .containers_model import ContainersModel
+from .containers_schemas import (
+    ContainerGetResponseBody,
+    ContainerPatchRequestBody,
+    ContainersListItem,
+)
+from .containers_util import (
+    ContainerInsertOrUpdateData,
+    insert_or_update_container,
+)
+
+containers_router = APIRouter(
+    prefix="/containers",
+    tags=["containers"],
+    dependencies=[Depends(is_authorized)],
+)
+
+
+def _raise_for_host_status(host: HostsModel):
+    """Raise an error if host disabled"""
+    if not host.enabled:
+        raise HTTPException(409, "Host disabled")
+
+
+def _raise_for_protected_container(container: ContainerInspectResult):
+    """Raise an error if container is protected"""
+    if is_protected_container(container):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Protected container not allowed",
+        )
+
+
+@containers_router.get(
+    path="/{host_id}/list",
+    response_model=list[ContainersListItem],
+    description="Get list of containers for docker host",
+)
+async def containers_list(
+    host_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> list[ContainersListItem]:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    containers = await client.container.list(GetContainerListBodySchema(all=True))
+    result = await session.execute(
+        select(ContainersModel).where(ContainersModel.host_id == host_id)
+    )
+    containers_db = result.scalars().all()
+    _list: list[ContainersListItem] = []
+    for c in containers:
+        _db_item = next(
+            (item for item in containers_db if item.name == c.name),
+            None,
+        )
+        _item = ContainersListItem.from_sources(host_id, c, _db_item)
+        _list.append(_item)
+    return _list
+
+
+@containers_router.get(
+    path="/{host_id}/{container_name_or_id}",
+    description="Get container info (inspect)",
+    response_model=ContainerGetResponseBody,
+)
+async def get_container(
+    host_id: int,
+    container_name_or_id: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> ContainerGetResponseBody:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    inspect = await client.container.inspect(container_name_or_id)
+    stmt = (
+        select(ContainersModel)
+        .where(
+            ContainersModel.host_id == host_id,
+            ContainersModel.name == inspect.name,
+        )
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    db_item = result.scalar_one_or_none()
+    return ContainerGetResponseBody(
+        item=ContainersListItem.from_sources(
+            host_id,
+            inspect,
+            db_item,
+        ),
+        inspect=inspect,
+    )
+
+
+@containers_router.patch(
+    path="/{host_id}/{c_name}",
+    description="Patch container data (create db entry if not exists)",
+    response_model=ContainersListItem,
+)
+async def patch_container_data(
+    host_id: int,
+    c_name: str,
+    body: ContainerPatchRequestBody,
+    session: AsyncSession = Depends(get_async_session),
+) -> ContainersListItem:
+    db_cont = await insert_or_update_container(
+        session,
+        host_id,
+        c_name,
+        ContainerInsertOrUpdateData(
+            **cast(ContainerInsertOrUpdateData, body.model_dump(exclude_unset=True))
+        ),
+    )
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    d_cont = await client.container.inspect(db_cont.name)
+    return ContainersListItem.from_sources(host_id, d_cont, db_cont)
+
+
+@containers_router.post(
+    path="/check",
+    description="Run general check process. Returns ID of the task that can be used for monitoring.",
+)
+async def check_all():
+    asyncio.create_task(check_all_containers(True))
+    return ALL_CONTAINERS_STATUS_KEY
+
+
+@containers_router.post(
+    path="/check/{host_id}",
+    description="Check specific host. Returns ID of the task that can be used for monitoring.",
+)
+async def check_host(
+    host_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> str:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    asyncio.create_task(
+        check_host_containers(host, client, True),
+    )
+    return get_host_cache_key(host)
+
+
+@containers_router.post(
+    path="/check/{host_id}/{c_name}",
+    description="Check specific container. Returns ID of the task that can be used for monitoring.",
+)
+async def check_container(
+    host_id: int,
+    c_name: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> str:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    container = await client.container.inspect(c_name)
+    asyncio.create_task(check_one_container(client, host, container))
+    return get_container_cache_key(
+        host,
+        container,
+    )
+
+
+@containers_router.post(
+    path="/update",
+    description="Run general update process. Returns ID of the task that can be used for monitoring.",
+)
+async def update_all():
+    asyncio.create_task(update_all_containers())
+    return ALL_CONTAINERS_STATUS_KEY
+
+
+@containers_router.post(
+    path="/update/{host_id}",
+    description="Update specific host. Returns ID of the task that can be used for monitoring.",
+)
+async def update_host(
+    host_id: int,
+    session: AsyncSession = Depends(get_async_session),
+) -> str:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    asyncio.create_task(
+        update_host_containers(host, client, True),
+    )
+    return get_host_cache_key(host)
+
+
+@containers_router.post(
+    path="/update/{host_id}/{c_name}",
+    description="Update specific container. Returns ID of the task that can be used for monitoring.",
+)
+async def update_container(
+    host_id: int,
+    c_name: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> str:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+
+    client = AgentClientManager.get_host_client(host)
+
+    if not await client.container.exists(c_name):
+        raise HTTPException(404, "Container not found")
+
+    container = await client.container.inspect(c_name)
+    containers = await client.container.list(GetContainerListBodySchema(all=True))
+
+    plan = await build_update_plan(
+        host,
+        containers,
+        [container],
+    )
+
+    try:
+        docker_version = await client.common.version()
+    except Exception:
+        logging.exception(f"Failed to get docker version while updating {c_name}")
+        docker_version = None
+
+    asyncio.create_task(
+        execute_update_plan(client, host, containers, plan, docker_version)
+    )
+    return get_plan_cache_key(host, plan)
+
+
+@containers_router.get(
+    path="/progress",
+    description="Get progress of general check",
+    response_model=AllActionProgress
+    | HostActionProgress
+    | UpdatePlanProgress
+    | ContainerActionProgress
+    | None,
+)
+def progress(
+    cache_id: str,
+) -> (
+    AllActionProgress
+    | HostActionProgress
+    | UpdatePlanProgress
+    | ContainerActionProgress
+    | None
+):
+    CACHE = ProgressCache[Any](cache_id)
+    return CACHE.get()
+
+
+@containers_router.post(
+    path="/{host_id}/logs/{container_name_or_id}",
+    description="Get log of container",
+    response_model=str,
+)
+async def logs(
+    host_id: int,
+    container_name_or_id: str,
+    body: GetContainerLogsRequestBody,
+    session: AsyncSession = Depends(get_async_session),
+) -> str:
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+
+    client = AgentClientManager.get_host_client(host)
+    return await client.container.logs(
+        container_name_or_id,
+        body,
+    )
+
+
+ControlContainerCommand = Literal[
+    "start", "stop", "restart", "kill", "pause", "unpause"
+]
+
+
+@containers_router.post(
+    path="/{host_id}/{command}/{container_name_or_id}",
+    description="Control container state with basic commands",
+    response_model=ContainerGetResponseBody,
+)
+async def control_container(
+    host_id: int,
+    command: ControlContainerCommand,
+    container_name_or_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+
+    client = AgentClientManager.get_host_client(host)
+    inspect = await client.container.inspect(container_name_or_id)
+    _raise_for_protected_container(inspect)
+
+    _command: Callable[[str], Awaitable[Any]] = getattr(client.container, command)
+    if not asyncio.iscoroutinefunction(_command):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Command not allowed")
+    await _command(container_name_or_id)
+
+    inspect = await client.container.inspect(container_name_or_id)
+    stmt = (
+        select(ContainersModel)
+        .where(
+            ContainersModel.host_id == host_id,
+            ContainersModel.name == inspect.name,
+        )
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    db_item = result.scalar_one_or_none()
+    return ContainerGetResponseBody(
+        item=ContainersListItem.from_sources(
+            host_id,
+            inspect,
+            db_item,
+        ),
+        inspect=inspect,
+    )

@@ -1,0 +1,154 @@
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.core.agent_client import AgentClientManager
+from backend.db.session import get_async_session
+from backend.exception import TugAgentClientError
+from backend.modules.auth.auth_util import is_authorized
+from backend.modules.hosts.hosts_util import (
+    annotate_available_updates_count,
+    get_host,
+)
+
+from .hosts_model import HostsModel
+from .hosts_schemas import (
+    HostBase,
+    HostInfo,
+    HostStatusResponseBody,
+)
+
+hosts_router = APIRouter(
+    prefix="/hosts",
+    tags=["hosts"],
+    dependencies=[Depends(is_authorized)],
+)
+
+
+@hosts_router.get(
+    "/list",
+    response_model=list[HostInfo],
+    description="Get list of existing hosts",
+)
+async def get_list(
+    session: AsyncSession = Depends(get_async_session),
+):
+    stmt = select(HostsModel)
+    result = await session.execute(stmt)
+    hosts = list(result.scalars().all())
+    hosts_dto: list[HostInfo] = [HostInfo.model_validate(h) for h in hosts]
+    await annotate_available_updates_count(hosts_dto, session)
+    return hosts_dto
+
+
+@hosts_router.post(
+    path="",
+    response_model=HostInfo,
+    status_code=201,
+    description="Create host",
+)
+async def create(
+    body: HostBase,
+    session: AsyncSession = Depends(get_async_session),
+):
+    stmt = select(HostsModel).where(HostsModel.name == body.name).limit(1)
+    result = await session.execute(stmt)
+    host = result.scalar_one_or_none()
+    if host:
+        raise HTTPException(400, "Host name is already taken")
+    _body = body.model_dump(exclude_unset=True)
+    new_host = HostsModel(**_body)
+    session.add(new_host)
+    await session.commit()
+    await session.refresh(new_host)
+    if new_host.enabled:
+        await AgentClientManager.set_client(new_host)
+    host_dto = HostInfo.model_validate(new_host)
+    await annotate_available_updates_count([host_dto], session)
+    return host_dto
+
+
+@hosts_router.get(
+    path="/{id}",
+    response_model=HostInfo,
+    description="Get host info",
+)
+async def read(
+    id: int,
+    session: AsyncSession = Depends(get_async_session),
+):
+    host = await get_host(id, session)
+    host_dto = HostInfo.model_validate(host)
+    await annotate_available_updates_count([host_dto], session)
+    return host_dto
+
+
+@hosts_router.put(
+    path="/{id}",
+    response_model=HostInfo,
+    description="Update host info",
+)
+async def update(
+    id: int,
+    body: HostBase,
+    session: AsyncSession = Depends(get_async_session),
+):
+    host = await get_host(id, session)
+    for key, value in body.model_dump(exclude_unset=True).items():
+        if getattr(host, key) != value:
+            setattr(host, key, value)
+    await session.commit()
+    await session.refresh(host)
+    await AgentClientManager.remove_client(host.id)
+    if host.enabled:
+        await AgentClientManager.set_client(host)
+    host_dto = HostInfo.model_validate(host)
+    await annotate_available_updates_count([host_dto], session)
+    return host_dto
+
+
+@hosts_router.delete(path="/{id}", description="Delete host")
+async def delete(
+    id: int,
+    session: AsyncSession = Depends(get_async_session),
+):
+    host = await get_host(id, session)
+    await AgentClientManager.remove_client(host.id)
+    await session.delete(host)
+    await session.commit()
+    return {"detail": "Host deleted successfully"}
+
+
+@hosts_router.get(
+    path="/{id}/status",
+    description="Get host status",
+    response_model=HostStatusResponseBody,
+)
+async def get_status(
+    id: int,
+    response: Response,
+    session: AsyncSession = Depends(get_async_session),
+) -> HostStatusResponseBody:
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    host = await get_host(id, session)
+    if not host.enabled:
+        return HostStatusResponseBody(id=id)
+    client = AgentClientManager.get_host_client(host)
+    try:
+        _ = await client.public.health()
+        _ = await client.public.access()
+        return HostStatusResponseBody(id=id, ok=True)
+    except TugAgentClientError as e:
+        return HostStatusResponseBody(
+            id=id,
+            ok=False,
+            err=str(e),
+        )
+    except Exception as e:
+        return HostStatusResponseBody(
+            id=id,
+            ok=False,
+            err=f"Unknown error\n{str(e)}",
+        )

@@ -1,0 +1,18 @@
+:host {
+  display: inline-flex;
+  gap: 0.5rem;
+  font-size: 1rem;
+  align-items: center;
+
+  ::ng-deep label {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  &:not(:has(input:disabled)),
+  &:not(:has(input:read-only)) {
+    ::ng-deep label {
+      cursor: pointer;
+    }
+  }
+}

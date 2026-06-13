@@ -1,0 +1,61 @@
+<p-toast position="bottom-right" />
+
+@defer (when showNewVersionDialog()) {
+<p-dialog
+  [header]="'UPDATE_DIALOGUE.UPDATE' | translate"
+  [modal]="true"
+  [draggable]="false"
+  [style]="{ width: '35rem' }"
+  [visible]="showNewVersionDialog()"
+  (visibleChange)="showNewVersionDialog.set($event)">
+  <span> {{ 'UPDATE_DIALOGUE.UPDATE_NOTES' | translate }} </span>
+  <ng-template #footer>
+    <p-button
+      icon="pi pi-link"
+      severity="success"
+      [label]="'UPDATE_DIALOGUE.DEPLOY_GUIDELINE' | translate"
+      (onClick)="openDeployGuideline()"></p-button>
+    <p-button
+      icon="pi pi-link"
+      severity="success"
+      [label]="'UPDATE_DIALOGUE.RELEASE_NOTES' | translate"
+      (onClick)="openReleaseNotes()"></p-button>
+  </ng-template>
+</p-dialog>
+}
+
+<div class="content">
+  @if (isToolbarVisible()) {
+  <div class="left">
+    <app-menu></app-menu>
+  </div>
+  }
+
+  <div class="content-right">
+    @if (isToolbarVisible()) {
+    <div class="content-right-head">
+      <p-breadcrumb
+        [style]="{'--p-breadcrumb-background': 'transparent'}"
+        [model]="breadcrumbs$ | async"
+        [home]="{icon:'pi pi-home', routerLink:'/'}">
+      </p-breadcrumb>
+
+      <div class="content-right-head-right">
+        @if (appStore.version(); as data) {
+        <p-tag severity="contrast"> {{ data.image_version }} </p-tag>
+        } @if (appStore.update()?.is_available) {
+        <p-tag
+          severity="success"
+          (click)="showNewVersionDialog.set(true)">
+          {{ 'UPDATE_DIALOGUE.UPDATE' | translate }}
+        </p-tag>
+        }
+      </div>
+    </div>
+    }
+
+    <div class="content-right-route">
+      <router-outlet></router-outlet>
+    </div>
+  </div>
+</div>

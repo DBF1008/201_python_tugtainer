@@ -1,0 +1,33 @@
+import { Injectable } from '@angular/core';
+import { BaseApiService } from '../../shared/types/base-api.service';
+import { Observable } from 'rxjs';
+import {
+  ISetting,
+  ISettingUpdate,
+  ITestNotificationRequestBody,
+} from './settings.interface';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class SettingsApiService extends BaseApiService<'/settings'> {
+  protected override readonly prefix = '/settings';
+
+  list(): Observable<ISetting[]> {
+    return this.httpClient.get<ISetting[]>(`${this.basePath}/list`);
+  }
+
+  change(settings: ISettingUpdate[]): Observable<unknown> {
+    return this.httpClient.patch(`${this.basePath}/change`, settings);
+  }
+
+  test_notification(body: ITestNotificationRequestBody): Observable<unknown> {
+    return this.httpClient.post(`${this.basePath}/test_notification`, body);
+  }
+
+  getAvailableTimezones(): Observable<string[]> {
+    return this.httpClient.get<string[]>(
+      `${this.basePath}/available_timezones`,
+    );
+  }
+}

@@ -1,0 +1,80 @@
+@let _item = item();
+@let _loading = loading();
+
+@if (showControlButtons()) {
+  <section class="control-buttons">
+    <p-button
+      [loading]="_loading === 'start'"
+      [label]="'CONTAINERS.COMMANDS.START' | translate"
+      icon="pi pi-play"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || !['created', 'exited'].includes(_item.status)"
+      (onClick)="OnCommand.emit('start')">
+    </p-button>
+    <p-button
+      [loading]="_loading === 'stop'"
+      [label]="'CONTAINERS.COMMANDS.STOP' | translate"
+      icon="pi pi-stop"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || ['created', 'exited', 'dead', 'removing'].includes(_item.status)"
+      (onClick)="OnCommand.emit('stop')">
+    </p-button>
+    <p-button
+      [loading]="_loading === 'restart'"
+      [label]="'CONTAINERS.COMMANDS.RESTART' | translate"
+      icon="pi pi-sync"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || ['created', 'removing'].includes(_item.status)"
+      (onClick)="OnCommand.emit('restart')">
+    </p-button>
+    <p-button
+      [loading]="_loading === 'kill'"
+      [label]="'CONTAINERS.COMMANDS.KILL' | translate"
+      icon="pi pi-ban"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || ['created', 'exited', 'dead', 'removing'].includes(_item.status)"
+      (onClick)="OnCommand.emit('kill')">
+    </p-button>
+    <p-button
+      [loading]="_loading === 'pause'"
+      [label]="'CONTAINERS.COMMANDS.PAUSE' | translate"
+      icon="pi pi-pause"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || _item.status !== 'running'"
+      (onClick)="OnCommand.emit('pause')">
+    </p-button>
+    <p-button
+      [loading]="_loading === 'unpause'"
+      [label]="'CONTAINERS.COMMANDS.UNPAUSE' | translate"
+      icon="pi pi-forward"
+      severity="contrast"
+      [disabled]="hostActionLoading() || _loading || _item.status !== 'paused'"
+      (onClick)="OnCommand.emit('unpause')">
+    </p-button>
+  </section>
+}
+
+<p-button-group>
+  <p-button
+    [loading]="_loading === 'check'"
+    [disabled]="hostActionLoading() || _loading"
+    [label]="'CONTAINERS.CHECK' | translate"
+    (onClick)="OnCheck.emit()"></p-button>
+  <p-button
+    [loading]="_loading === 'update'"
+    [disabled]="hostActionLoading() || _loading || cantUpdate()"
+    [pTooltip]="updateButtonTooltip"
+    [tooltipDisabled]="!showUpdateTooltip()"
+    [label]="'CONTAINERS.UPDATE' | translate"
+    severity="success"
+    (onClick)="OnUpdate.emit()"></p-button>
+</p-button-group>
+
+<ng-template #updateButtonTooltip>
+  @if (_item.status !== 'running') {
+    {{ 'CONTAINERS.UPDATE_DISABLED_HINTS.NOT_RUNNING' | translate }}
+  }
+  @if (_item.protected) {
+    {{ 'CONTAINERS.UPDATE_DISABLED_HINTS.PROTECTED' | translate }}
+  }
+</ng-template>

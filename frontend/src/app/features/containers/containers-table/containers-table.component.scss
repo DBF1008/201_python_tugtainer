@@ -1,0 +1,22 @@
+@use 'mixins' as m;
+
+:host {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+
+  p-toolbar {
+    border-color: transparent;
+  }
+
+  p-table {
+    @include m.p-table;
+  }
+
+  th:first-child,
+  td:first-child {
+    width: 40%;
+    max-width: 35vw;
+  }
+}

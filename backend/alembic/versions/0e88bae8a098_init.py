@@ -1,0 +1,109 @@
+"""init
+
+Revision ID: 0e88bae8a098
+Revises:
+Create Date: 2025-09-22 00:46:42.320647
+
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+import tzlocal
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "0e88bae8a098"
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    op.create_table(
+        "containers",
+        sa.Column(
+            "name",
+            sa.String(),
+            nullable=False,
+            unique=True,
+            primary_key=True,
+        ),
+        sa.Column(
+            "check_enabled",
+            sa.Boolean(),
+            server_default=sa.text("(FALSE)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "update_enabled",
+            sa.Boolean(),
+            server_default=sa.text("(FALSE)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "update_available",
+            sa.Boolean(),
+            server_default=sa.text("(FALSE)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "checked_at",
+            sa.DateTime(),
+            nullable=True,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            nullable=True,
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column(
+            "modified_at",
+            sa.DateTime(),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            server_onupdate=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+    )
+    op.create_table(
+        "settings",
+        sa.Column(
+            "key",
+            sa.String(),
+            unique=True,
+            nullable=False,
+            primary_key=True,
+        ),
+        sa.Column("value", sa.String(), nullable=False),
+        sa.Column("value_type", sa.String(), nullable=False),
+        sa.Column(
+            "modified_at",
+            sa.DateTime(),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+    )
+    op.execute(
+        sa.text(
+            f"""
+        INSERT INTO settings (key, value, value_type) VALUES
+        ('CRONTAB_EXPR', '0 0 * * *', 'str'),
+        ('NOTIFICATION_URL', '', 'str'),
+        ('TIMEZONE', '{tzlocal.get_localzone_name()}', 'str'),
+        ('PRUNE_IMAGES', 'FALSE', 'bool')
+        """
+        )
+    )
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    op.drop_table("settings")
+    op.drop_table("containers")
