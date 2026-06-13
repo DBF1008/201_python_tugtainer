@@ -161,6 +161,15 @@ async def patch_container_data(
     body: ContainerPatchRequestBody,
     session: AsyncSession = Depends(get_async_session),
 ) -> ContainersListItem:
+    # Validate the host, agent connectivity and the remote container *before*
+    # persisting anything. ``insert_or_update_container`` commits on its own, so
+    # running it first left dirty ``ContainersModel`` rows behind whenever a
+    # subsequent check failed (disabled host, missing container, agent timeout).
+    host = await get_host(host_id, session)
+    _raise_for_host_status(host)
+    client = AgentClientManager.get_host_client(host)
+    d_cont = await client.container.inspect(c_name)
+
     db_cont = await insert_or_update_container(
         session,
         host_id,
@@ -169,10 +178,6 @@ async def patch_container_data(
             **cast(ContainerInsertOrUpdateData, body.model_dump(exclude_unset=True))
         ),
     )
-    host = await get_host(host_id, session)
-    _raise_for_host_status(host)
-    client = AgentClientManager.get_host_client(host)
-    d_cont = await client.container.inspect(db_cont.name)
     return ContainersListItem.from_sources(host_id, d_cont, db_cont)
 
 
