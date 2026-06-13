@@ -28,8 +28,9 @@ from backend.core.container_util.wait_for_container_healthy import (
 from backend.core.progress.progress_cache import ProgressCache
 from backend.core.progress.progress_schemas import UpdatePlanProgress
 from backend.core.progress.progress_util import (
+    acquire_action_lock,
     get_plan_cache_key,
-    is_allowed_start_cache,
+    release_action_lock,
 )
 from backend.core.update_actions.update_actions_schema import (
     UpdatePlan,
@@ -64,20 +65,54 @@ async def execute_update_plan(
     containers: list[ContainerInspectResult],
     plan: UpdatePlan,
     docker_version: DockerVersionScheme | None,
+    cache_key: str | None = None,
+) -> UpdatePlanResult | None:
+    """
+    Execute an update plan, guarding against a concurrent run of the same plan.
+    :param cache_key: task-instance progress id to report under. When omitted
+        (nested host-update call) the stable plan key is used.
+    """
+    lock_key: Final = get_plan_cache_key(host, plan)
+    progress_key: Final = cache_key or lock_key
+    if not acquire_action_lock(lock_key):
+        logger.warning(f"{lock_key} is already running. Exiting.")
+        # Resolve this instance's watcher with a terminal status so the client
+        # poll completes instead of waiting on an empty cache entry.
+        ProgressCache[UpdatePlanProgress](progress_key).set(
+            {"status": EActionStatus.DONE}
+        )
+        return None
+    try:
+        return await _execute_update_plan(
+            client, host, containers, plan, docker_version, progress_key
+        )
+    except Exception:
+        logger.exception("Failed to execute update plan")
+        ProgressCache[UpdatePlanProgress](progress_key).update(
+            {"status": EActionStatus.ERROR}
+        )
+        return None
+    finally:
+        release_action_lock(lock_key)
+
+
+async def _execute_update_plan(
+    client: AgentClient,
+    host: HostsModel,
+    containers: list[ContainerInspectResult],
+    plan: UpdatePlan,
+    docker_version: DockerVersionScheme | None,
+    progress_key: str,
 ) -> UpdatePlanResult | None:
     logger.info(
         f"to_update={plan.to_update}, affected={plan.affected}, order={plan.order}"
     )
     delay: Final = SettingsStorage.get(ESettingKey.REGISTRY_REQ_DELAY)
-    status_key: Final = get_plan_cache_key(host, plan)
-    cache: Final = ProgressCache[UpdatePlanProgress](status_key)
-    state: Final = cache.get()
-    if not is_allowed_start_cache(state):
-        logger.warning(f"{status_key} is already running. Exiting.")
-        return None
+    cache: Final = ProgressCache[UpdatePlanProgress](progress_key)
 
     if not plan.to_update:
-        logger.warning(f"{status_key} has no containers to update. Exiting.")
+        logger.warning(f"{progress_key} has no containers to update. Exiting.")
+        cache.set({"status": EActionStatus.DONE})
         return None
 
     cache.set({"status": EActionStatus.PREPARING})

@@ -29,10 +29,7 @@ from backend.core.progress.progress_schemas import (
     UpdatePlanProgress,
 )
 from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
-    get_container_cache_key,
-    get_host_cache_key,
-    get_plan_cache_key,
+    new_progress_key,
 )
 from backend.core.update_actions.update_actions_executor import (
     execute_update_plan,
@@ -181,8 +178,9 @@ async def patch_container_data(
     description="Run general check process. Returns ID of the task that can be used for monitoring.",
 )
 async def check_all():
-    asyncio.create_task(check_all_containers(True))
-    return ALL_CONTAINERS_STATUS_KEY
+    cache_key = new_progress_key()
+    asyncio.create_task(check_all_containers(True, cache_key=cache_key))
+    return cache_key
 
 
 @containers_router.post(
@@ -196,10 +194,11 @@ async def check_host(
     host = await get_host(host_id, session)
     _raise_for_host_status(host)
     client = AgentClientManager.get_host_client(host)
+    cache_key = new_progress_key()
     asyncio.create_task(
-        check_host_containers(host, client, True),
+        check_host_containers(host, client, True, cache_key=cache_key),
     )
-    return get_host_cache_key(host)
+    return cache_key
 
 
 @containers_router.post(
@@ -215,11 +214,11 @@ async def check_container(
     _raise_for_host_status(host)
     client = AgentClientManager.get_host_client(host)
     container = await client.container.inspect(c_name)
-    asyncio.create_task(check_one_container(client, host, container))
-    return get_container_cache_key(
-        host,
-        container,
+    cache_key = new_progress_key()
+    asyncio.create_task(
+        check_one_container(client, host, container, cache_key=cache_key)
     )
+    return cache_key
 
 
 @containers_router.post(
@@ -227,8 +226,9 @@ async def check_container(
     description="Run general update process. Returns ID of the task that can be used for monitoring.",
 )
 async def update_all():
-    asyncio.create_task(update_all_containers())
-    return ALL_CONTAINERS_STATUS_KEY
+    cache_key = new_progress_key()
+    asyncio.create_task(update_all_containers(cache_key=cache_key))
+    return cache_key
 
 
 @containers_router.post(
@@ -242,10 +242,11 @@ async def update_host(
     host = await get_host(host_id, session)
     _raise_for_host_status(host)
     client = AgentClientManager.get_host_client(host)
+    cache_key = new_progress_key()
     asyncio.create_task(
-        update_host_containers(host, client, True),
+        update_host_containers(host, client, True, cache_key=cache_key),
     )
-    return get_host_cache_key(host)
+    return cache_key
 
 
 @containers_router.post(
@@ -280,10 +281,13 @@ async def update_container(
         logging.exception(f"Failed to get docker version while updating {c_name}")
         docker_version = None
 
+    cache_key = new_progress_key()
     asyncio.create_task(
-        execute_update_plan(client, host, containers, plan, docker_version)
+        execute_update_plan(
+            client, host, containers, plan, docker_version, cache_key=cache_key
+        )
     )
-    return get_plan_cache_key(host, plan)
+    return cache_key
 
 
 @containers_router.get(

@@ -248,7 +248,7 @@ export const HostsStore = signalStore(
               tapResponse({
                 next: (globalActionProgress) => {
                   patchState(store, { globalActionProgress });
-                  if (globalActionProgress.result) {
+                  if (globalActionProgress?.result) {
                     openActionResultDialog(
                       Object.values(globalActionProgress.result),
                       null,
@@ -310,7 +310,7 @@ export const HostsStore = signalStore(
                       changes: { progress },
                     }),
                   );
-                  if (progress.result) {
+                  if (progress?.result) {
                     openActionResultDialog([progress.result], null);
                   }
                 },

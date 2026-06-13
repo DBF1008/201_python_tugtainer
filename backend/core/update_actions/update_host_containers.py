@@ -14,8 +14,9 @@ from backend.core.progress.progress_schemas import (
     HostActionProgress,
 )
 from backend.core.progress.progress_util import (
+    acquire_action_lock,
     get_host_cache_key,
-    is_allowed_start_cache,
+    release_action_lock,
 )
 from backend.core.update_actions.update_actions_executor import (
     execute_update_plan,
@@ -32,22 +33,28 @@ from shared.schemas.image_schemas import PruneImagesRequestBodySchema
 
 
 async def update_host_containers(
-    host: HostsModel, client: AgentClient, manual: bool = False
+    host: HostsModel,
+    client: AgentClient,
+    manual: bool = False,
+    cache_key: str | None = None,
 ) -> HostActionResult | None:
     """
     Update containers of specified host.
     :param host: host info from db
     :param client: host's docker client
     :param manual: manual update includes all containers
+    :param cache_key: task-instance progress id to report under. When omitted
+        (scheduled/all call) the stable host key is used.
     """
     result: Final = HostActionResult(host_id=host.id, host_name=host.name)
-    status_key: Final = get_host_cache_key(host)
-    cache: Final = ProgressCache[HostActionProgress](status_key)
-    state: Final = cache.get()
+    lock_key: Final = get_host_cache_key(host)
+    progress_key: Final = cache_key or lock_key
+    cache: Final = ProgressCache[HostActionProgress](progress_key)
     logger: Final = logging.getLogger(f"update_host_containers.{host.id}:{host.name}")
 
-    if not is_allowed_start_cache(state):
+    if not acquire_action_lock(lock_key):
         logger.warning("Update already running. Exiting.")
+        cache.set({"status": EActionStatus.DONE})
         return None
 
     try:
@@ -99,3 +106,5 @@ async def update_host_containers(
             {"status": EActionStatus.ERROR},
         )
         return None
+    finally:
+        release_action_lock(lock_key)

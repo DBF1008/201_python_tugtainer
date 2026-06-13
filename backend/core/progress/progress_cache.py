@@ -3,10 +3,14 @@ from typing import Any
 
 from cachetools import TTLCache
 
-_CACHE = TTLCache(maxsize=10, ttl=600)
+# Manual actions create a unique progress key per task-instance, so distinct
+# entries accumulate (until they expire) far faster than the old stable-key
+# scheme. Keep enough room that an in-flight run a client is watching is not
+# evicted under a burst of manual actions.
+_CACHE = TTLCache(maxsize=256, ttl=600)
 
 
-class ProgressCache[T:Mapping[Any, Any]]:
+class ProgressCache[T: Mapping[Any, Any]]:
     """
     Helper class for check/update progress.
     If data argument is passed, the cache will be replaced.

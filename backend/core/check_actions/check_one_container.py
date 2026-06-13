@@ -26,8 +26,9 @@ from backend.core.progress.progress_schemas import (
     ContainerActionProgress,
 )
 from backend.core.progress.progress_util import (
+    acquire_action_lock,
     get_container_cache_key,
-    is_allowed_start_cache,
+    release_action_lock,
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
@@ -53,23 +54,29 @@ async def check_one_container(
     client: AgentClient,
     host: HostsModel,
     container: ContainerInspectResult,
+    cache_key: str | None = None,
 ) -> ContainerActionResult:
     """
     Check if there is new image for the container.
     This func should not raise exceptions.
+    :param cache_key: task-instance progress id to report under. When omitted
+        (nested/scheduled call) the stable container key is used.
     """
     result: Final = ContainerActionResult(container)
     delay: Final = SettingsStorage.get(ESettingKey.REGISTRY_REQ_DELAY)
-    cache_key: Final = get_container_cache_key(
+    lock_key: Final = get_container_cache_key(
         host,
         container,
     )
-    cache: Final = ProgressCache[ContainerActionProgress](cache_key)
-    state: Final = cache.get()
+    progress_key: Final = cache_key or lock_key
+    cache: Final = ProgressCache[ContainerActionProgress](progress_key)
     logger: Final = logging.getLogger(f"check_one_container.{container.name}")
 
-    if not is_allowed_start_cache(state):
+    if not acquire_action_lock(lock_key):
         logger.warning("Check action already running. Exiting.")
+        # Resolve this instance's watcher with a terminal status so the client
+        # poll completes instead of waiting on an empty cache entry.
+        cache.set({"status": EActionStatus.DONE})
         return result
 
     async with async_session_maker() as session:
@@ -176,3 +183,5 @@ async def check_one_container(
             logger.exception("Failed to check container")
             cache.update({"status": EActionStatus.ERROR, "result": result})
             return result
+        finally:
+            release_action_lock(lock_key)

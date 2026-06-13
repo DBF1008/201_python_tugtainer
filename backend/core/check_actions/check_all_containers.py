@@ -14,7 +14,8 @@ from backend.core.progress.progress_schemas import (
 )
 from backend.core.progress.progress_util import (
     ALL_CONTAINERS_STATUS_KEY,
-    is_allowed_start_cache,
+    acquire_action_lock,
+    release_action_lock,
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
@@ -25,17 +26,21 @@ from .check_host_containers import check_host_containers
 
 async def check_all_containers(
     manual: bool = False,
+    cache_key: str | None = None,
 ) -> None:
     """
     Check all containers of all hosts
     :param manual: manual check includes all containers
+    :param cache_key: task-instance progress id to report under. When omitted
+        (scheduled call) the stable "all" key is used.
     """
-    cache: Final = ProgressCache[AllActionProgress](ALL_CONTAINERS_STATUS_KEY)
-    state: Final = cache.get()
+    progress_key: Final = cache_key or ALL_CONTAINERS_STATUS_KEY
+    cache: Final = ProgressCache[AllActionProgress](progress_key)
     logger: Final = logging.getLogger("check_all_containers")
 
-    if not is_allowed_start_cache(state):
+    if not acquire_action_lock(ALL_CONTAINERS_STATUS_KEY):
         logger.warning("Check process is already running. Exiting.")
+        cache.set({"status": EActionStatus.DONE})
         return
 
     try:
@@ -78,3 +83,5 @@ async def check_all_containers(
     except Exception:
         cache.update({"status": EActionStatus.ERROR})
         logger.exception("Error while checking all containers for all hosts")
+    finally:
+        release_action_lock(ALL_CONTAINERS_STATUS_KEY)

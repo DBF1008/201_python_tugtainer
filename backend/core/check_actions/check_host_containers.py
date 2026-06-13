@@ -10,8 +10,9 @@ from backend.core.progress.progress_schemas import (
     HostActionProgress,
 )
 from backend.core.progress.progress_util import (
+    acquire_action_lock,
     get_host_cache_key,
-    is_allowed_start_cache,
+    release_action_lock,
 )
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
@@ -34,48 +35,42 @@ async def check_host_containers(
     host: HostsModel,
     client: AgentClient,
     manual: bool = False,
+    cache_key: str | None = None,
 ) -> HostActionResult | None:
     """
     Check all host's containers.
     :param host: host info
     :param client: host agent client
     :param manual: manual check includes all containers
+    :param cache_key: task-instance progress id to report under. When omitted
+        (scheduled/all call) the stable host key is used.
     """
-    result: Final = HostActionResult(
-        host_id=host.id, host_name=host.name
-    )
-    cache_key: Final = get_host_cache_key(host)
-    cache: Final = ProgressCache[HostActionProgress](cache_key)
-    state: Final = cache.get()
-    logger: Final = logging.getLogger(
-        f"check_host_containers.{host.id}.{host.name}"
-    )
+    result: Final = HostActionResult(host_id=host.id, host_name=host.name)
+    lock_key: Final = get_host_cache_key(host)
+    progress_key: Final = cache_key or lock_key
+    cache: Final = ProgressCache[HostActionProgress](progress_key)
+    logger: Final = logging.getLogger(f"check_host_containers.{host.id}.{host.name}")
 
-    if not is_allowed_start_cache(state):
+    if not acquire_action_lock(lock_key):
         logger.warning("Check action is already running. Exiting.")
+        cache.set({"status": EActionStatus.DONE})
         return None
 
     try:
         logger.info("Starting check action")
         cache.set({"status": EActionStatus.PREPARING})
-        containers = await client.container.list(
-            GetContainerListBodySchema(all=True)
-        )
+        containers = await client.container.list(GetContainerListBodySchema(all=True))
         async with async_session_maker() as session:
             containers_db: Final = await get_host_containers(
                 session,
                 host.id,
             )
-            containers_db_map: Final = {
-                item.name: item for item in containers_db
-            }
+            containers_db_map: Final = {item.name: item for item in containers_db}
 
         containers = filter_containers_by_check_enabled(
             containers, containers_db_map, manual
         )
-        containers = sort_containers_by_checked_at(
-            containers, containers_db_map
-        )
+        containers = sort_containers_by_checked_at(containers, containers_db_map)
 
         cache.update(
             {"status": EActionStatus.CHECKING},
@@ -96,3 +91,5 @@ async def check_host_containers(
             {"status": EActionStatus.ERROR},
         )
         return result
+    finally:
+        release_action_lock(lock_key)
