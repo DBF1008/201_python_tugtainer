@@ -13,6 +13,86 @@ client = TestClient(app)
 
 
 @pytest.mark.asyncio
+async def test_health_no_cron_jobs(mocker: MockerFixture):
+    """Test health endpoint returns healthy even when no cron jobs are scheduled.
+
+    This is the bug fix scenario: automatic updates are disabled by default,
+    so the health check should not fail when CHECK_CONTAINERS is not scheduled.
+    """
+    fake_session = mocker.Mock()
+    fake_session.execute = mocker.AsyncMock()
+
+    async def fake_get_async_session():
+        yield fake_session
+
+    app.dependency_overrides[get_async_session] = fake_get_async_session
+
+    # Mock CronManager to return empty job list
+    mocker.patch(
+        f"{module_path}.CronManager.get_jobs",
+        return_value=[],
+    )
+
+    response = client.get("/public/health")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["scheduler"]["check_containers_scheduled"] is False
+    assert data["scheduler"]["update_containers_scheduled"] is False
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_health_with_cron_jobs(mocker: MockerFixture):
+    """Test health endpoint includes scheduler status when jobs are scheduled."""
+    from backend.enums.cron_jobs_enum import ECronJob
+
+    fake_session = mocker.Mock()
+    fake_session.execute = mocker.AsyncMock()
+
+    async def fake_get_async_session():
+        yield fake_session
+
+    app.dependency_overrides[get_async_session] = fake_get_async_session
+
+    # Mock CronManager to return scheduled jobs
+    mocker.patch(
+        f"{module_path}.CronManager.get_jobs",
+        return_value=[ECronJob.CHECK_CONTAINERS, ECronJob.UPDATE_CONTAINERS],
+    )
+
+    response = client.get("/public/health")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["scheduler"]["check_containers_scheduled"] is True
+    assert data["scheduler"]["update_containers_scheduled"] is True
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_health_database_failure(mocker: MockerFixture):
+    """Test health endpoint returns 503 when database is unavailable."""
+    fake_session = mocker.Mock()
+    fake_session.execute = mocker.AsyncMock(side_effect=Exception("DB connection failed"))
+
+    async def fake_get_async_session():
+        yield fake_session
+
+    app.dependency_overrides[get_async_session] = fake_get_async_session
+
+    response = client.get("/public/health")
+    assert response.status_code == 503
+    assert "Database error" in response.json()["detail"]
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "current_version, latest_version, expected_is_available, expected_release_url",
     [

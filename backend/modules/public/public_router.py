@@ -26,6 +26,8 @@ from shared.schemas.container_schemas import (
 )
 
 from .public_schemas import (
+    HealthResponseBodySchema,
+    HealthSchedulerStatusSchema,
     IsUpdateAvailableResponseBodySchema,
     TotalUpdateCountResponseBodySchema,
     VersionResponseBody,
@@ -43,16 +45,26 @@ def get_version():
         raise HTTPException(404, "Version file not found") from e
 
 
-@public_router.get("/health")
+@public_router.get("/health", response_model=HealthResponseBodySchema)
 async def health(session: AsyncSession = Depends(get_async_session)):
+    # Check database connectivity - this is the core health indicator
     try:
         await session.execute(text("SELECT 1"))
     except Exception as e:
         raise HTTPException(503, f"Database error {e}") from e
+
+    # Scheduler status is informational only, not a health failure condition
+    # Automatic checks/updates are disabled by default and crontab can be empty
     cron_jobs = CronManager.get_jobs()
-    if ECronJob.CHECK_CONTAINERS not in cron_jobs:
-        raise HTTPException(500, "Main cron job not running")
-    return "OK"
+    scheduler_status = HealthSchedulerStatusSchema(
+        check_containers_scheduled=ECronJob.CHECK_CONTAINERS in cron_jobs,
+        update_containers_scheduled=ECronJob.UPDATE_CONTAINERS in cron_jobs,
+    )
+
+    return HealthResponseBodySchema(
+        status="healthy",
+        scheduler=scheduler_status,
+    )
 
 
 @public_router.get(
