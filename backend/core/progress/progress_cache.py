@@ -3,7 +3,7 @@ from typing import Any
 
 from cachetools import TTLCache
 
-_CACHE = TTLCache(maxsize=10, ttl=600)
+_CACHE = TTLCache(maxsize=20, ttl=600)
 
 
 class ProgressCache[T:Mapping[Any, Any]]:

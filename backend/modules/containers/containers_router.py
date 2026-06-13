@@ -29,9 +29,11 @@ from backend.core.progress.progress_schemas import (
     UpdatePlanProgress,
 )
 from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
+    ALL_CHECK_STATUS_KEY,
+    ALL_UPDATE_STATUS_KEY,
     get_container_cache_key,
-    get_host_cache_key,
+    get_host_check_cache_key,
+    get_host_update_cache_key,
     get_plan_cache_key,
 )
 from backend.core.update_actions.update_actions_executor import (
@@ -182,7 +184,7 @@ async def patch_container_data(
 )
 async def check_all():
     asyncio.create_task(check_all_containers(True))
-    return ALL_CONTAINERS_STATUS_KEY
+    return ALL_CHECK_STATUS_KEY
 
 
 @containers_router.post(
@@ -199,7 +201,7 @@ async def check_host(
     asyncio.create_task(
         check_host_containers(host, client, True),
     )
-    return get_host_cache_key(host)
+    return get_host_check_cache_key(host)
 
 
 @containers_router.post(
@@ -228,7 +230,7 @@ async def check_container(
 )
 async def update_all():
     asyncio.create_task(update_all_containers())
-    return ALL_CONTAINERS_STATUS_KEY
+    return ALL_UPDATE_STATUS_KEY
 
 
 @containers_router.post(
@@ -245,7 +247,7 @@ async def update_host(
     asyncio.create_task(
         update_host_containers(host, client, True),
     )
-    return get_host_cache_key(host)
+    return get_host_update_cache_key(host)
 
 
 @containers_router.post(

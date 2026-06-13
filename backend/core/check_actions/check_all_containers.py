@@ -13,7 +13,7 @@ from backend.core.progress.progress_schemas import (
     AllActionProgress,
 )
 from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
+    ALL_CHECK_STATUS_KEY,
     is_allowed_start_cache,
 )
 from backend.db.session import async_session_maker
@@ -30,7 +30,7 @@ async def check_all_containers(
     Check all containers of all hosts
     :param manual: manual check includes all containers
     """
-    cache: Final = ProgressCache[AllActionProgress](ALL_CONTAINERS_STATUS_KEY)
+    cache: Final = ProgressCache[AllActionProgress](ALL_CHECK_STATUS_KEY)
     state: Final = cache.get()
     logger: Final = logging.getLogger("check_all_containers")
 

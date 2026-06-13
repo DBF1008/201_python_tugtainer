@@ -13,11 +13,20 @@ from backend.core.update_actions.update_actions_schema import (
 from backend.enums.action_status_enum import EActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
 
-ALL_CONTAINERS_STATUS_KEY = str(uuid.uuid4())
+ALL_CHECK_STATUS_KEY = str(uuid.uuid4())
+ALL_UPDATE_STATUS_KEY = str(uuid.uuid4())
 
 
 def get_host_cache_key(host: HostsModel) -> str:
     return f"{host.id}:{host.name}"
+
+
+def get_host_check_cache_key(host: HostsModel) -> str:
+    return f"check:{get_host_cache_key(host)}"
+
+
+def get_host_update_cache_key(host: HostsModel) -> str:
+    return f"update:{get_host_cache_key(host)}"
 
 
 def get_plan_cache_key(host: HostsModel, plan: UpdatePlan) -> str:

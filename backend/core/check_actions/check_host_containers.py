@@ -10,7 +10,7 @@ from backend.core.progress.progress_schemas import (
     HostActionProgress,
 )
 from backend.core.progress.progress_util import (
-    get_host_cache_key,
+    get_host_check_cache_key,
     is_allowed_start_cache,
 )
 from backend.db.session import async_session_maker
@@ -44,7 +44,7 @@ async def check_host_containers(
     result: Final = HostActionResult(
         host_id=host.id, host_name=host.name
     )
-    cache_key: Final = get_host_cache_key(host)
+    cache_key: Final = get_host_check_cache_key(host)
     cache: Final = ProgressCache[HostActionProgress](cache_key)
     state: Final = cache.get()
     logger: Final = logging.getLogger(

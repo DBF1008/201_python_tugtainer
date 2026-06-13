@@ -14,7 +14,7 @@ from backend.core.progress.progress_schemas import (
     HostActionProgress,
 )
 from backend.core.progress.progress_util import (
-    get_host_cache_key,
+    get_host_update_cache_key,
     is_allowed_start_cache,
 )
 from backend.core.update_actions.update_actions_executor import (
@@ -41,7 +41,7 @@ async def update_host_containers(
     :param manual: manual update includes all containers
     """
     result: Final = HostActionResult(host_id=host.id, host_name=host.name)
-    status_key: Final = get_host_cache_key(host)
+    status_key: Final = get_host_update_cache_key(host)
     cache: Final = ProgressCache[HostActionProgress](status_key)
     state: Final = cache.get()
     logger: Final = logging.getLogger(f"update_host_containers.{host.id}:{host.name}")

@@ -13,7 +13,7 @@ from backend.core.progress.progress_schemas import (
     AllActionProgress,
 )
 from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
+    ALL_UPDATE_STATUS_KEY,
     is_allowed_start_cache,
 )
 from backend.db.session import async_session_maker
@@ -31,7 +31,7 @@ async def update_all_containers():
     """
     logger: Final = logging.getLogger("update_all_containers")
     cache: Final = ProgressCache[AllActionProgress](
-        ALL_CONTAINERS_STATUS_KEY
+        ALL_UPDATE_STATUS_KEY
     )
     state: Final = cache.get()
 
