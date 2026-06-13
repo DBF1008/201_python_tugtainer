@@ -12,10 +12,6 @@ from backend.core.progress.progress_cache import ProgressCache
 from backend.core.progress.progress_schemas import (
     AllActionProgress,
 )
-from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
-    is_allowed_start_cache,
-)
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
@@ -23,21 +19,15 @@ from backend.modules.hosts.hosts_model import HostsModel
 from .update_host_containers import update_host_containers
 
 
-async def update_all_containers():
+async def update_all_containers(cache_id: str) -> None:
     """
     Main func for scheduled/manual update of all containers
     marked for it, for all specified docker hosts.
     Should not raises errors, only logging.
+    :param cache_id: progress cache id of this task instance
     """
     logger: Final = logging.getLogger("update_all_containers")
-    cache: Final = ProgressCache[AllActionProgress](
-        ALL_CONTAINERS_STATUS_KEY
-    )
-    state: Final = cache.get()
-
-    if not is_allowed_start_cache(state):
-        logger.warning("Update process is already running.")
-        return
+    cache: Final = ProgressCache[AllActionProgress](cache_id)
 
     try:
         cache.set(
@@ -47,13 +37,7 @@ async def update_all_containers():
 
         async with async_session_maker() as session:
             hosts: Final = (
-                (
-                    await session.execute(
-                        select(HostsModel).where(
-                            HostsModel.enabled
-                        )
-                    )
-                )
+                (await session.execute(select(HostsModel).where(HostsModel.enabled)))
                 .scalars()
                 .all()
             )
@@ -70,27 +54,19 @@ async def update_all_containers():
                 if result:
                     results += [result]
             except Exception:
-                logger.exception(
-                    f"Failed to update containers of {host.name}"
-                )
+                logger.exception(f"Failed to update containers of {host.name}")
 
         cache.update(
             {
                 "status": EActionStatus.DONE,
-                "result": {
-                    item.host_id: item for item in results if item
-                },
+                "result": {item.host_id: item for item in results if item},
             }
         )
         try:
             await send_check_notification(results)
         except Exception:
-            logger.exception(
-                "Failed to send notification after update"
-            )
+            logger.exception("Failed to send notification after update")
 
     except Exception:
         cache.update({"status": EActionStatus.ERROR})
-        logger.exception(
-            "Error while updating of all containers for all hosts"
-        )
+        logger.exception("Error while updating of all containers for all hosts")

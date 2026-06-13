@@ -11,8 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.agent_client import AgentClientManager
-from backend.core.check_actions.check_all_containers import (
-    check_all_containers,
+from backend.core.all_containers_action import (
+    start_check_all,
+    start_update_all,
 )
 from backend.core.check_actions.check_host_containers import (
     check_host_containers,
@@ -29,7 +30,6 @@ from backend.core.progress.progress_schemas import (
     UpdatePlanProgress,
 )
 from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
     get_container_cache_key,
     get_host_cache_key,
     get_plan_cache_key,
@@ -39,9 +39,6 @@ from backend.core.update_actions.update_actions_executor import (
 )
 from backend.core.update_actions.update_actions_plan import (
     build_update_plan,
-)
-from backend.core.update_actions.update_all_containers import (
-    update_all_containers,
 )
 from backend.core.update_actions.update_host_containers import (
     update_host_containers,
@@ -180,9 +177,14 @@ async def patch_container_data(
     path="/check",
     description="Run general check process. Returns ID of the task that can be used for monitoring.",
 )
-async def check_all():
-    asyncio.create_task(check_all_containers(True))
-    return ALL_CONTAINERS_STATUS_KEY
+async def check_all() -> str:
+    result = start_check_all(manual=True)
+    if result.cache_id is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A global {result.running_action} action is already running",
+        )
+    return result.cache_id
 
 
 @containers_router.post(
@@ -226,9 +228,14 @@ async def check_container(
     path="/update",
     description="Run general update process. Returns ID of the task that can be used for monitoring.",
 )
-async def update_all():
-    asyncio.create_task(update_all_containers())
-    return ALL_CONTAINERS_STATUS_KEY
+async def update_all() -> str:
+    result = start_update_all()
+    if result.cache_id is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A global {result.running_action} action is already running",
+        )
+    return result.cache_id
 
 
 @containers_router.post(

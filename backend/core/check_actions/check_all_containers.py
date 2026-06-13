@@ -12,10 +12,6 @@ from backend.core.progress.progress_cache import ProgressCache
 from backend.core.progress.progress_schemas import (
     AllActionProgress,
 )
-from backend.core.progress.progress_util import (
-    ALL_CONTAINERS_STATUS_KEY,
-    is_allowed_start_cache,
-)
 from backend.db.session import async_session_maker
 from backend.enums.action_status_enum import EActionStatus
 from backend.modules.hosts.hosts_model import HostsModel
@@ -24,19 +20,16 @@ from .check_host_containers import check_host_containers
 
 
 async def check_all_containers(
+    cache_id: str,
     manual: bool = False,
 ) -> None:
     """
     Check all containers of all hosts
+    :param cache_id: progress cache id of this task instance
     :param manual: manual check includes all containers
     """
-    cache: Final = ProgressCache[AllActionProgress](ALL_CONTAINERS_STATUS_KEY)
-    state: Final = cache.get()
+    cache: Final = ProgressCache[AllActionProgress](cache_id)
     logger: Final = logging.getLogger("check_all_containers")
-
-    if not is_allowed_start_cache(state):
-        logger.warning("Check process is already running. Exiting.")
-        return
 
     try:
         cache.set(

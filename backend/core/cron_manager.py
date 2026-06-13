@@ -4,8 +4,10 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import aiocron
 
-from backend.core.check_actions.check_all_containers import check_all_containers
-from backend.core.update_actions.update_all_containers import update_all_containers
+from backend.core.all_containers_action import (
+    run_scheduled_check_all,
+    run_scheduled_update_all,
+)
 from backend.enums.cron_jobs_enum import ECronJob
 from backend.modules.settings.settings_enum import ESettingKey
 from backend.modules.settings.settings_storage import SettingsStorage
@@ -18,26 +20,22 @@ async def schedule_actions_on_init():
     Schedule container check and update on app init
     """
     tz = SettingsStorage.get(ESettingKey.TIMEZONE)
-    check_crontab = SettingsStorage.get(
-        ESettingKey.CHECK_CRONTAB_EXPR
-    )
-    update_crontab = SettingsStorage.get(
-        ESettingKey.UPDATE_CRONTAB_EXPR
-    )
+    check_crontab = SettingsStorage.get(ESettingKey.CHECK_CRONTAB_EXPR)
+    update_crontab = SettingsStorage.get(ESettingKey.UPDATE_CRONTAB_EXPR)
 
     if check_crontab:
         CronManager.schedule_job(
             ECronJob.CHECK_CONTAINERS,
             check_crontab,
             tz,
-            check_all_containers,
+            run_scheduled_check_all,
         )
     if update_crontab:
         CronManager.schedule_job(
             ECronJob.UPDATE_CONTAINERS,
             update_crontab,
             tz,
-            update_all_containers,
+            run_scheduled_update_all,
         )
 
 
@@ -72,9 +70,7 @@ class CronManager:
         cls._jobs[name] = aiocron.crontab(
             cron_expr, func=func, args=args, kwargs=kwargs, tz=_tz
         )
-        logging.info(
-            f"[CronManager] Job '{name}' scheduled with '{cron_expr}'"
-        )
+        logging.info(f"[CronManager] Job '{name}' scheduled with '{cron_expr}'")
 
     @classmethod
     def cancel_job(cls, name: str):

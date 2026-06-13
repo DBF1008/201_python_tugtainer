@@ -19,14 +19,12 @@ from backend.core.action_result import (
     ContainerActionResult,
     HostActionResult,
 )
-from backend.core.check_actions.check_all_containers import (
-    check_all_containers,
+from backend.core.all_containers_action import (
+    run_scheduled_check_all,
+    run_scheduled_update_all,
 )
 from backend.core.cron_manager import CronManager
 from backend.core.notifications_core import send_check_notification
-from backend.core.update_actions.update_all_containers import (
-    update_all_containers,
-)
 from backend.db.session import get_async_session
 from backend.enums.cron_jobs_enum import ECronJob
 from backend.exception import TugNotificationException
@@ -106,13 +104,13 @@ async def change_system_settings(
         ECronJob.CHECK_CONTAINERS,
         check_cron_item,
         tz,
-        check_all_containers,
+        run_scheduled_check_all,
     )
     CronManager.schedule_job(
         ECronJob.UPDATE_CONTAINERS,
         update_cron_item,
         tz,
-        update_all_containers,
+        run_scheduled_update_all,
     )
 
     return {"status": "updated", "count": len(data)}
